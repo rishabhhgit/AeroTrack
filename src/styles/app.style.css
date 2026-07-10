@@ -1,0 +1,53 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-size: 62.5%;
+  font-family: Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+@keyframes genericRotating {
+  0% {
+    transform: rotate(calc(0deg + calc(var(--offsetFactor) * var(--offsetDegree)))) translate(0px, 128px) rotate(calc(0deg - calc(var(--offsetFactor) * var(--offsetDegree))));
+  }
+
+  100% {
+    transform: rotate(calc(360deg + calc(var(--offsetFactor) * var(--offsetDegree)))) translate(0px, 128px) rotate(calc(-360deg - calc(var(--offsetFactor) * var(--offsetDegree))));
+  }
+}
+
+.maplibregl-canvas-container,
+.maplibregl-canvas {
+  z-index: 0 !important;
+}
+
+.maplibregl-ctrl-group {
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.maplibregl-ctrl-group button+button {
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.maplibregl-ctrl-group button:focus {
+  box-shadow: 0 0 2px 2px #2196f3;
+}
+
+.maplibregl-ctrl-group button:focus:focus-visible {
+  box-shadow: 0 0 2px 2px #2196f3;
+}
+
+.maplibregl-ctrl {
+  border-radius: 8px !important;
+}
