@@ -1,4 +1,4 @@
-# React Flight Tracker
+# AeroTrack
 
 A real-time flight tracking application that visualizes live air traffic on an interactive map using data from the OpenSky Network.
 
