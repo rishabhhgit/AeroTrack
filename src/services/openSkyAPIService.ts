@@ -30,7 +30,7 @@ export interface IOpenSkyAPIService extends IService {
   releaseTrack: (icao24: string) => void;
   onAircraftTrackUpdated: (contextKey: string, callbackHandler: AircraftTrackUpdatedCallbackMethod) => string;
   offAircraftTrackUpdated: (registerKey: string) => boolean;
-  fetchRoute: (icao24: string) => Promise<{ departureAirport: string | null; arrivalAirport: string | null } | null>;
+  fetchRoute: (icao24: string, stateVector?: IStateVector | null) => Promise<{ departureAirport: string | null; arrivalAirport: string | null } | null>;
 };
 
 export class OpenSkyAPIService extends Service implements IOpenSkyAPIService {

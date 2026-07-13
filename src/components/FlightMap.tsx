@@ -1015,8 +1015,8 @@ const FlightMap: React.FC<Props> = (props) => {
           display: 'flex',
           gap: { xs: 0.5, sm: 1 },
           flexWrap: 'wrap',
-        }}
-        style={{ pointerEvents: 'auto' }}>
+          pointerEvents: 'auto',
+        }}>
         <AirportSearch onAirportSelect={handleAirportSelect} />
         <FlightSearch
           stateVectors={props.stateVectors}
