@@ -1,14 +1,12 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 import { ServiceProvider } from '../../services/infrastructure/serviceProvider.js';
+import { AppContext, SettingKeys } from './AppContext.js';
 import { ThemeKeys } from '../../styles/index.js';
 
 // Types
 import type { IService } from '../../services/infrastructure/serviceTypes.js';
 
-export class SettingKeys {
-  public static EnablePathPrediction = 'EnablePathPrediction';
-  public static ShowDataOverlayOnMap = 'ShowDataOverlayOnMap';
-};
+export { SettingKeys } from './AppContext.js';
 
 const getDefaultSettings = () => {
   return {
@@ -16,26 +14,6 @@ const getDefaultSettings = () => {
     [SettingKeys.ShowDataOverlayOnMap]: true
   };
 };
-
-// Definition for app context props
-export interface AppContextProps {
-  hasConnectionErrors: boolean;
-  activeThemeName: string;
-  getService: <T extends IService>(serviceKey: string) => T | undefined;
-  changeTheme: (themeName: string) => void;
-  pushSetting: (key: string, value: any) => boolean;
-  pullSetting: (key: string) => any;
-};
-
-// Create the app context
-export const AppContext = React.createContext<AppContextProps>({
-  hasConnectionErrors: false,
-  activeThemeName: ThemeKeys.DarkTheme,
-  getService: () => undefined,
-  changeTheme: (themeName: string) => { },
-  pushSetting: (key: string, value: any) => false,
-  pullSetting: (key: string) => undefined
-});
 
 interface ILocalProps {
   children?: React.ReactNode;
@@ -46,72 +24,72 @@ type Props = ILocalProps;
 
 const AppContextProvider: React.FC<Props> = (props) => {
 
-  // Fields
-  const contextName: string = 'AppContextProvider'
-
   // Refs
-  const serviceProviderRef = useRef<ServiceProvider>(new ServiceProvider());
+  const serviceProviderRef = useRef<ServiceProvider | null>(null);
+  const onInjectServicesRef = useRef(props.onInjectServices);
+  const onThemeChangeRef = useRef(props.onThemeChange);
+  onInjectServicesRef.current = props.onInjectServices;
+  onThemeChangeRef.current = props.onThemeChange;
+
+  // Initialize service provider once
+  if (!serviceProviderRef.current) {
+    serviceProviderRef.current = new ServiceProvider();
+  }
 
   // States
-  const [hasConnectionErrors, setConnectionErrors,] = useState(false);
-  const [activeThemeName, setActiveThemeName] = useState(ThemeKeys.DarkTheme);
-  const [settingsStorage, setSettingsStorage] = useState<{ [key: string]: any }>(getDefaultSettings());
+  const [activeThemeName, setActiveThemeName] = useState(() => {
+    const defaults = getDefaultSettings();
+    return defaults[SettingKeys.EnablePathPrediction] ? ThemeKeys.JetLogTheme : ThemeKeys.DarkTheme;
+  });
+  const [settingsStorage, setSettingsStorage] = useState<{ [key: string]: unknown }>(getDefaultSettings());
 
   // Effects
   useEffect(() => {
 
     // Mount
-
-    if (props.onInjectServices) {
-
-      var servicesToInject = props.onInjectServices();
-      servicesToInject.forEach(service => serviceProviderRef.current.addService(service, service.key))
+    if (onInjectServicesRef.current) {
+      const servicesToInject = onInjectServicesRef.current();
+      servicesToInject.forEach(service => serviceProviderRef.current!.addService(service, service.key));
     }
 
-    serviceProviderRef.current.startServices();
+    serviceProviderRef.current!.startServices();
 
     // Unmount
     return () => {
-
-      serviceProviderRef.current.stopServices();
+      serviceProviderRef.current!.stopServices();
     }
   }, []);
 
-  const handleThemeChange = (themeName: string) => {
-
-    if (props.onThemeChange)
-      props.onThemeChange(themeName);
-
+  const handleThemeChange = useCallback((themeName: string) => {
+    if (onThemeChangeRef.current)
+      onThemeChangeRef.current(themeName);
     setActiveThemeName(themeName);
-  };
+  }, []);
 
-  const handlePushSetting = (key: string, value: any) => {
-
-    // OFI -> Store data in indexedDB or localStorage
-
-    const settingsStorageCopy = { ...settingsStorage };
-    settingsStorageCopy[key] = value;
-    setSettingsStorage(settingsStorageCopy);
-
+  const handlePushSetting = useCallback((key: string, value: unknown) => {
+    setSettingsStorage(prev => ({ ...prev, [key]: value }));
     return true;
-  };
+  }, []);
 
-  const handlePullSetting = (key: string,) => {
-    return settingsStorage[key];
-  };
+  const settingsStorageRef = useRef(settingsStorage);
+  settingsStorageRef.current = settingsStorage;
+
+  const handlePullSetting = useCallback((key: string) => {
+    return settingsStorageRef.current[key];
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    hasConnectionErrors: false,
+    activeThemeName,
+    getService: serviceProviderRef.current!.getService,
+    changeTheme: handleThemeChange,
+    pushSetting: handlePushSetting,
+    pullSetting: handlePullSetting
+  }), [activeThemeName, handleThemeChange, handlePushSetting, handlePullSetting]);
 
   return (
 
-    <AppContext.Provider
-      value={
-        {
-          hasConnectionErrors: hasConnectionErrors,
-          activeThemeName: activeThemeName,
-          getService: serviceProviderRef.current.getService,
-          changeTheme: handleThemeChange,
-          pushSetting: handlePushSetting,
-          pullSetting: handlePullSetting
-        }} >
+    <AppContext.Provider value={contextValue}>
       {props.children}
     </AppContext.Provider>
   );

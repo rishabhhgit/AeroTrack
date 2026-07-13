@@ -3,8 +3,8 @@ import fetch from "node-fetch";
 import dotenv from "dotenv";
 
 dotenv.config({ path: ".env.local" });
-console.log("Client ID:", process.env.VITE_REACT_OSKY_CLIENT_ID);
-console.log("Client Secret:", process.env.VITE_REACT_OSKY_CLIENT_SECRET ? "****" : "NOT SET");
+console.info("Client ID:", process.env.VITE_REACT_OSKY_CLIENT_ID ? "****" : "NOT SET");
+console.info("Client Secret:", process.env.VITE_REACT_OSKY_CLIENT_SECRET ? "****" : "NOT SET");
 
 const app = express();
 const PORT = parseInt(process.env.PROXY_PORT || '3001', 10);
@@ -63,5 +63,5 @@ app.get("/oskytokenapi", async (_req, res) => {
 });
 
 app.listen(PORT, () =>
-  console.log(`[opensky-token-proxy] runs @ http://localhost:${PORT}/oskytokenapi`)
+  console.info(`[opensky-token-proxy] runs @ http://localhost:${PORT}/oskytokenapi`)
 );

@@ -52,7 +52,7 @@ const NavigationElementDialog: React.FC<Props> = (props) => {
           <IconButton
             color={'inherit'}
             aria-label="Close"
-            onClick={(e) => props.onClose()}>
+            onClick={() => props.onClose()}>
 
             <CloseIcon />
           </IconButton>
@@ -81,7 +81,7 @@ const NavigationElementDialog: React.FC<Props> = (props) => {
       onClick={(e) => {
         e.stopPropagation();
       }}
-      onClose={(e, r) => {
+      onClose={(e, _r) => {
         const event = e as React.SyntheticEvent<Element, Event>;
         if (event.stopPropagation)
           event.stopPropagation();

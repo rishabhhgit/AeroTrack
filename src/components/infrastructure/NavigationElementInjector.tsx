@@ -13,28 +13,25 @@ interface ILocalProps {
 };
 type Props = ILocalProps;
 
-const NavigationElementInjector: React.FC<Props> = (props) => {
+const NavigationElementInjector: React.FC<Props> = ({ navigationElement, onInject }) => {
 
-  if (props.navigationElement === null || props.navigationElement === undefined)
-    return null
+  // Memoized lazy import of a component (hooks must be called unconditionally)
+  const GenericNavigationElement = useMemo((): React.LazyExoticComponent<React.ComponentType<INavigationElementProps>> | null => {
+    if (navigationElement === null || navigationElement === undefined) return null;
+    return onInject(navigationElement);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- Only re-memoize when navigation key changes
+  }, [navigationElement?.key, onInject]);
 
-  // Memoized lazy import of a component
-  const GenericNavigationElement = useMemo((): React.LazyExoticComponent<React.ComponentType<INavigationElementProps>> => {
-
-    if (props.navigationElement === null || props.navigationElement === undefined)
-      return React.lazy(() => Promise.resolve({ default: () => null })); // Return a dummy component to satisfy the type
-
-    return props.onInject(props.navigationElement);
-  }, [props.navigationElement.key]);
+  if (!GenericNavigationElement || !navigationElement) return null;
 
   return (
 
     <ErrorBoundary
-      sourceName={props.navigationElement.importPath}
+      sourceName={navigationElement.importPath}
       onRenderFallback={(source, error, errorInfo) => {
         return (
 
-          <Box>
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
             <ErrorContent
               sourceName={source}
@@ -48,14 +45,14 @@ const NavigationElementInjector: React.FC<Props> = (props) => {
 
           <Box
             sx={{
-              height: '100%',
-              width: '100%',
+              flex: 1,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               alignContent: 'center',
               justifyItems: 'center',
-              justifyContent: 'center'
+              justifyContent: 'center',
+              minHeight: 0,
             }}>
 
             <CircularProgress
@@ -64,7 +61,9 @@ const NavigationElementInjector: React.FC<Props> = (props) => {
           </Box>
         }>
 
-        <GenericNavigationElement />
+        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <GenericNavigationElement />
+        </Box>
       </Suspense>
     </ErrorBoundary>
   );

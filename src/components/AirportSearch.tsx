@@ -2,7 +2,7 @@ import React, { useState, useContext, useRef, useEffect } from 'react';
 import { Box, TextField, List, ListItem, ListItemText, ListItemIcon, Typography, Paper, InputAdornment } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import FlightIcon from '@mui/icons-material/Flight';
-import { AppContext } from '../components/infrastructure/AppContextProvider.js';
+import { AppContext } from '../components/infrastructure/AppContext.js';
 import { ServiceKeys } from '../services/serviceKeys.js';
 
 // Types

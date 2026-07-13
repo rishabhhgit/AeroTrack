@@ -1,14 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
 html,
 body {
   margin: 0;
   padding: 0;
   font-size: 62.5%;
-  font-family: Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   height: 100%;
   width: 100%;
+  background-color: #f5f0e8;
 }
 
 #root {
@@ -16,38 +19,169 @@ body {
   width: 100%;
 }
 
-@keyframes genericRotating {
-  0% {
-    transform: rotate(calc(0deg + calc(var(--offsetFactor) * var(--offsetDegree)))) translate(0px, 128px) rotate(calc(0deg - calc(var(--offsetFactor) * var(--offsetDegree))));
-  }
-
-  100% {
-    transform: rotate(calc(360deg + calc(var(--offsetFactor) * var(--offsetDegree)))) translate(0px, 128px) rotate(calc(-360deg - calc(var(--offsetFactor) * var(--offsetDegree))));
-  }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.maplibregl-canvas-container,
-.maplibregl-canvas {
-  z-index: 0 !important;
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.fade-in { animation: fadeIn 0.3s ease-out both; }
+.slide-in-left { animation: fadeIn 0.3s ease-out both; }
+.slide-in-right { animation: fadeIn 0.3s ease-out both; }
+.scale-in { animation: fadeIn 0.2s ease-out both; }
+
+/* Focus ring fix — remove black shadow on Box clicks */
+*:focus {
+  outline: none;
+}
+*:focus-visible {
+  outline: 2px solid #d4a017;
+  outline-offset: 2px;
+}
+.maplibregl-canvas:focus {
+  outline: none;
+}
+
+/* Prevent text selection on charts and interactive elements */
+.recharts-wrapper,
+.recharts-surface,
+.recharts-cartesian-grid,
+svg {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.recharts-active-bar rect,
+.recharts-sector {
+  cursor: default;
+}
+::selection {
+  background-color: rgba(212, 160, 23, 0.25);
+  color: inherit;
+}
+
+/* Map styles — no CSS transitions/transforms on WebGL canvas */
+.maplibregl-canvas-container {
+  border-radius: 0 !important;
+}
+
+.maplibregl-popup {
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
 }
 
 .maplibregl-ctrl-group {
-  border-radius: 8px !important;
+  border-radius: 6px !important;
   overflow: hidden;
+  border: 1px solid #d6d0c4 !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
 }
 
 .maplibregl-ctrl-group button+button {
-  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  border-top: 1px solid #d6d0c4;
 }
 
 .maplibregl-ctrl-group button:focus {
-  box-shadow: 0 0 2px 2px #2196f3;
+  box-shadow: 0 0 0 2px #d4a017;
 }
 
 .maplibregl-ctrl-group button:focus:focus-visible {
-  box-shadow: 0 0 2px 2px #2196f3;
+  box-shadow: 0 0 0 2px #d4a017;
 }
 
 .maplibregl-ctrl {
+  border-radius: 6px !important;
+}
+
+.maplibregl-popup-content {
   border-radius: 8px !important;
+  padding: 10px 14px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+  border: 1px solid #d6d0c4 !important;
+  font-family: 'Space Mono', monospace !important;
+  font-size: 0.8rem !important;
+}
+
+.maplibregl-popup-close-button {
+  font-size: 14px !important;
+  padding: 2px 6px !important;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* Table rows */
+.table-row {
+  transition: background-color 0.12s ease;
+}
+.table-row:hover {
+  background-color: rgba(128, 128, 128, 0.06);
+  cursor: pointer;
+}
+
+/* Stagger animation */
+.stagger-in > * {
+  animation: fadeIn 0.3s ease-out both;
+}
+.stagger-in > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-in > *:nth-child(2) { animation-delay: 40ms; }
+.stagger-in > *:nth-child(3) { animation-delay: 80ms; }
+.stagger-in > *:nth-child(4) { animation-delay: 120ms; }
+.stagger-in > *:nth-child(5) { animation-delay: 160ms; }
+.stagger-in > *:nth-child(6) { animation-delay: 200ms; }
+
+/* Skeleton loader */
+.skeleton-box {
+  background: linear-gradient(90deg, #ece7db 25%, #d6d0c4 50%, #ece7db 75%);
+  background-size: 200px 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+  border-radius: 4px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in, .slide-in-left, .slide-in-right, .scale-in,
+  .stagger-in > *, .skeleton-box {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .flight-info-overlay {
+    width: 100% !important;
+    max-width: none !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    border-radius: 12px 12px 0 0 !important;
+    max-height: 60vh !important;
+  }
+
+  .airport-detail-panel {
+    width: 100% !important;
+    max-width: none !important;
+    top: auto !important;
+    bottom: 0 !important;
+    border-radius: 12px 12px 0 0 !important;
+    max-height: 70vh !important;
+  }
+
+  .search-container {
+    width: 100% !important;
+    left: 8px !important;
+    right: 8px !important;
+  }
 }

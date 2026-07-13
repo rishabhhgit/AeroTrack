@@ -1,7 +1,6 @@
 import React from 'react';
 import { Box } from '@mui/material';
 import AboutContent from '../components/infrastructure/AboutContent.js';
-import { ViewKeys } from './viewKeys.js';
 
 // Types
 import type { IAboutData } from '../components/infrastructure/AboutContent.js';
@@ -10,14 +9,9 @@ import type { INavigationElementProps } from '../navigation/navigationTypes.js';
 // Icons
 import InfoIcon from '@mui/icons-material/Info';
 
-interface ILocalProps {
-}
-type Props = ILocalProps & INavigationElementProps;
+type Props = Record<string, never> & INavigationElementProps;
 
-const AboutView: React.FC<Props> = (props) => {
-
-  // Fields
-  const contextName: string = ViewKeys.AboutView;
+const AboutView: React.FC<Props> = (_props) => {
 
   // Data seeding
   const elements: Array<IAboutData> = [

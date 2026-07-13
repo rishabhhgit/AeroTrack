@@ -23,13 +23,19 @@ export abstract class Service implements IService {
 
     console.info(`Service '${this.key}' is starting...`);
 
-    var onStartingResponse = await this.onStarting();
-    if (onStartingResponse) {
-      this.state = ServiceStateEnumeration.Running;
-      console.info(`Service '${this.key}' is running.`);
-    } else {
+    try {
+      const onStartingResponse = await this.onStarting();
+      if (onStartingResponse) {
+        this.state = ServiceStateEnumeration.Running;
+        console.info(`Service '${this.key}' is running.`);
+      } else {
+        this.state = ServiceStateEnumeration.Error;
+        console.error(`Service '${this.key}' could not be started.`);
+        return false;
+      }
+    } catch (error) {
       this.state = ServiceStateEnumeration.Error;
-      console.error(`Service '${this.key}' could not be started.`);
+      console.error(`Service '${this.key}' threw during start:`, error);
       return false;
     }
 
@@ -40,13 +46,19 @@ export abstract class Service implements IService {
 
     console.info(`Service '${this.key}' is stopping...`);
 
-    var onStoppingResponse = await this.onStopping();
-    if (onStoppingResponse) {
-      this.state = ServiceStateEnumeration.Stopped;
-      console.info(`Service '${this.key}' is stopped.`);
-    } else {
+    try {
+      const onStoppingResponse = await this.onStopping();
+      if (onStoppingResponse) {
+        this.state = ServiceStateEnumeration.Stopped;
+        console.info(`Service '${this.key}' is stopped.`);
+      } else {
+        this.state = ServiceStateEnumeration.Error;
+        console.error(`Service '${this.key}' could not be stopped.`);
+        return false;
+      }
+    } catch (error) {
       this.state = ServiceStateEnumeration.Error;
-      console.error(`Service '${this.key}' could not be stopped.`);
+      console.error(`Service '${this.key}' threw during stop:`, error);
       return false;
     }
 
@@ -67,8 +79,5 @@ export abstract class Service implements IService {
 
     this.version++;
     console.debug(`Service '${this.key}' version has been updated to '${this.version}'. Reason: ${reason}`);
-
-    // Execute callbacks
-    //Object.entries(this.changesSubscriberDictionary).forEach(([key, value], index) => value(this.version, reason, this.key));
   };
 }

@@ -3,14 +3,14 @@ import React, { Component } from 'react';
 interface ILocalProps {
   children?: React.ReactNode;
   sourceName: string;
-  onRenderFallback: (source: string, error: any, errorInfo: any) => React.ReactNode;
+  onRenderFallback: (source: string, error: Error | null, errorInfo: React.ErrorInfo) => React.ReactNode;
 };
 type Props = ILocalProps;
 
 interface ILocalState {
   sourceName: string;
-  error: any;
-  errorInfo: any;
+  error: Error | null;
+  errorInfo: React.ErrorInfo | null;
 }
 type State = ILocalState;
 
@@ -29,7 +29,7 @@ export class ErrorBoundary extends Component<Props, State> {
     };
   }
 
-  componentDidCatch(error: any, info: any) {
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
 
     this.setState({
       error: error,
@@ -40,10 +40,9 @@ export class ErrorBoundary extends Component<Props, State> {
       console.error(`${error && error.toString()} ${info.componentStack} @'${this.props.sourceName}'`);
   };
 
-  componentDidUpdate() {
+  componentDidUpdate(prevProps: Props) {
 
-    if (this.state.sourceName !== this.props.sourceName) {
-
+    if (prevProps.sourceName !== this.props.sourceName) {
       this.setState({
         sourceName: this.props.sourceName,
         error: null,

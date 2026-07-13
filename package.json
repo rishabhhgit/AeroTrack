@@ -23,7 +23,10 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.3",
-    "react-virtuoso": "^4.13.0"
+    "react-virtuoso": "^4.13.0",
+    "recharts": "^2.15.0",
+    "notistack": "^3.0.2",
+    "zustand": "^5.0.5"
   },
   "devDependencies": {
     "@types/node": "^24.0.10",

@@ -22,7 +22,7 @@ export interface IResponse<T> {
 
 export const createResponse = <T>(payload: T, state: ResponseStateEnumeration = ResponseStateEnumeration.OK, messageStack: IResponseMessage[] = []) => {
 
-  var response: IResponse<T> = {
+  const response: IResponse<T> = {
     state: state,
     messageStack: messageStack,
     payload: payload
@@ -33,9 +33,9 @@ export const createResponse = <T>(payload: T, state: ResponseStateEnumeration = 
 
 export interface IRESTService extends IService {
   get: <T>(url: string, init?: RequestInit) => Promise<IResponse<T>>;
-  post: <T>(url: string, data: Object | string, init?: RequestInit) => Promise<IResponse<T>>;
-  put: <T>(url: string, data: Object | string, init?: RequestInit) => Promise<IResponse<T>>;
-  delete: <T>(url: string, data?: Object | number, init?: RequestInit) => Promise<IResponse<T>>;
+  post: <T>(url: string, data: object | string, init?: RequestInit) => Promise<IResponse<T>>;
+  put: <T>(url: string, data: object | string, init?: RequestInit) => Promise<IResponse<T>>;
+  delete: <T>(url: string, data?: object | number, init?: RequestInit) => Promise<IResponse<T>>;
   getDefaultRequestInit: (method: string) => RequestInit;
   setAuthorization: (authorizationHeader: string | (() => Promise<string>) | undefined) => void;
 };
@@ -53,21 +53,21 @@ export class RESTService extends Service implements IRESTService {
     return this.invokeAsync<T>('GET', url, undefined, init);
   };
 
-  public post = <T>(url: string, data: Object | string, init?: RequestInit): Promise<IResponse<T>> => {
+  public post = <T>(url: string, data: object | string, init?: RequestInit): Promise<IResponse<T>> => {
     return this.invokeAsync<T>('POST', url, data, init);
   };
 
-  public put = <T>(url: string, data: Object | string, init?: RequestInit): Promise<IResponse<T>> => {
+  public put = <T>(url: string, data: object | string, init?: RequestInit): Promise<IResponse<T>> => {
     return this.invokeAsync<T>('PUT', url, data, init);
   };
 
-  public delete = <T>(url: string, data?: Object | number, init?: RequestInit): Promise<IResponse<T>> => {
+  public delete = <T>(url: string, data?: object | number, init?: RequestInit): Promise<IResponse<T>> => {
     return this.invokeAsync<T>('DELETE', url, data, init);
   };
 
   public getDefaultRequestInit = (method: string): RequestInit => {
 
-    var requestInit: RequestInit = {
+    const requestInit: RequestInit = {
       method: method,               // *GET, POST, PUT, DELETE, etc.
       mode: "same-origin",          // no-cors, cors, *same-origin
       cache: "default",             // *default, no-cache, reload, force-cache, only-if-cached
@@ -91,9 +91,9 @@ export class RESTService extends Service implements IRESTService {
     return true;
   };
 
-  private async getHeaders(data?: Object | number | string): Promise<Headers> {
+  private async getHeaders(data?: object | number | string): Promise<Headers> {
 
-    var headers = new Headers();
+    const headers = new Headers();
     headers.set('Accept', 'application/json');
 
     // Dynamic Authorization Header
@@ -120,9 +120,9 @@ export class RESTService extends Service implements IRESTService {
     return headers;
   }
 
-  private getBody = (data?: Object | number | string) => {
+  private getBody = (data?: object | number | string) => {
 
-    var body = undefined;
+    let body = undefined;
 
     // Body data type must match "Content-Type" header
     if (data) {
@@ -142,20 +142,20 @@ export class RESTService extends Service implements IRESTService {
     let requestInit = this.getDefaultRequestInit(method);
 
     if (init)
-      requestInit = init;
+      requestInit = { ...requestInit, ...init };
 
     return requestInit;
   };
 
-  private invokeAsync = async <T>(method: string, url: string, data?: Object | number | string, init?: RequestInit): Promise<IResponse<T>> => {
+  private invokeAsync = async <T>(method: string, url: string, data?: object | number | string, init?: RequestInit): Promise<IResponse<T>> => {
 
-    var responseOk = false;
-    var responseStatus = 0;
-    var responseStatusText = '';
+    let responseOk = false;
+    let responseStatus = 0;
+    let responseStatusText = '';
 
-    var requestInit = this.getRequestInit(method, init);
-    var headers = await this.getHeaders(data);
-    var body = this.getBody(data);
+    const requestInit = this.getRequestInit(method, init);
+    const headers = await this.getHeaders(data);
+    const body = this.getBody(data);
     requestInit.headers = headers;
     requestInit.body = body;
 
@@ -170,7 +170,7 @@ export class RESTService extends Service implements IRESTService {
         responseStatusText = response.statusText;
 
         // Check how to resolve the body
-        var responseContentType = response.headers.get("content-type");
+        const responseContentType = response.headers.get("content-type");
         if (responseContentType && responseContentType.indexOf("application/json") !== -1)
           return response.json();
         else
@@ -180,7 +180,7 @@ export class RESTService extends Service implements IRESTService {
       .then((responseObject) => {
 
         // Setup the response object
-        var responseData: IResponse<T> = {
+        const responseData: IResponse<T> = {
           state: ResponseStateEnumeration.Unknown,
           messageStack: []
         }
@@ -189,19 +189,17 @@ export class RESTService extends Service implements IRESTService {
 
         // Treat non-2xx as errors (includes 429 rate limit)
         if (!responseOk) {
-          var logMessage = `Request failed with status ${responseStatus}: ${responseStatusText}`;
+          const logMessage = `Request failed with status ${responseStatus}: ${responseStatusText}`;
           responseData.state = ResponseStateEnumeration.Error;
           responseData.messageStack.push({
             context: this.key,
             logText: logMessage
           });
         }
-        else if (responseObject == null ||
-          responseObject == undefined) {
+        else if (responseObject == null) {
 
-          var displayKey = "services.restservice.novalidresponse";
-          var displayValue = `No valid response.`;
-          var logMessage = `${displayValue} Response object is null or undefined.`;
+          const displayValue = `No valid response.`;
+          const logMessage = `${displayValue} Response object is null or undefined.`;
 
           responseData.messageStack.push({
             context: this.key,
@@ -212,16 +210,16 @@ export class RESTService extends Service implements IRESTService {
         }
         else if (typeof responseObject == 'string') {
 
-          var payload: any = {
+          const payload = {
             data: responseObject
-          }
+          } as T;
 
           responseData.state = ResponseStateEnumeration.OK;
           responseData.payload = payload;
         }
         else if (typeof responseObject == 'object') {
 
-          var assertedResponseData = responseObject as IResponse<T>;
+          const assertedResponseData = responseObject as IResponse<T>;
           if (assertedResponseData.state && assertedResponseData.messageStack && assertedResponseData.payload) {
 
             responseData.state = assertedResponseData.state;
@@ -236,9 +234,8 @@ export class RESTService extends Service implements IRESTService {
         }
         else {
 
-          var displayKey = "services.restservice.noresponse";
-          var displayValue = `No response available.`;
-          var logMessage = `${displayValue} No idea what's going on here. Go and drink a coffee.`;
+          const displayValue = `No response available.`;
+          const logMessage = `${displayValue} No idea what's going on here. Go and drink a coffee.`;
 
           responseData.messageStack.push({
             context: this.key,
@@ -249,7 +246,7 @@ export class RESTService extends Service implements IRESTService {
         }
 
         // Fill the response object
-        var response: IResponse<T> = {
+        const response: IResponse<T> = {
           state: responseData.state,
           messageStack: responseData.messageStack,
           payload: responseData.payload,
@@ -257,12 +254,16 @@ export class RESTService extends Service implements IRESTService {
 
         return response;
       })
-      .catch((reason: any) => {
+      .catch((reason: unknown) => {
 
         // Setup the response object
-        var response: IResponse<T> = {
+        const errorMessage = reason instanceof Error ? reason.message : String(reason || 'Unknown error');
+        const response: IResponse<T> = {
           state: ResponseStateEnumeration.Error,
-          messageStack: []
+          messageStack: [{
+            context: this.key,
+            logText: `Request failed: ${errorMessage}`
+          }]
         };
 
         return response;

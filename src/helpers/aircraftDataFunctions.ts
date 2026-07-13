@@ -1,55 +1,9 @@
-import FlightIcon from './../resources/flight-24px.svg?react';
-import FlightLandIcon from './../resources/flight_land-24px.svg?react';
-import FlightLandFlippedIcon from './../resources/flight_land-24px_flippedx.svg?react';
-import FlightTakeoffIcon from './../resources/flight_takeoff-24px.svg?react';
-import FlightTakeoffFlippedIcon from './../resources/flight_takeoff-24px_flippedx.svg?react';
-
 const altitudeStateLimit = 1000;
 
 export const getFormattedValue = (rawValue: number, maxFractionDigits: number) => {
 
-  const NumberFormatter = new Intl.NumberFormat('de-CH', { style: 'decimal', useGrouping: false, maximumFractionDigits: maxFractionDigits });
+  const NumberFormatter = new Intl.NumberFormat(undefined, { style: 'decimal', useGrouping: false, maximumFractionDigits: maxFractionDigits });
   return NumberFormatter.format(rawValue);
-};
-
-export const getIconName = (isOnGround: boolean, verticalRate: number, altitude: number, trueTrack: number): string => {
-
-  if (isOnGround)
-    return 'flight-icon';
-
-  if (altitude <= 0)
-    return 'flight-icon';
-
-  if (verticalRate > 0 && altitude < altitudeStateLimit)
-    if (trueTrack < 180)
-      return 'flight-takeoff-icon';
-    else
-      return 'flight-takeoff-flipped-icon';
-
-  if (verticalRate < 0 && altitude < altitudeStateLimit)
-    if (trueTrack < 180)
-      return 'flight-land-icon';
-    else
-      return 'flight-land-flipped-icon';
-
-  return 'flight-icon';
-};
-
-export const getIcon = (isOnGround: boolean, verticalRate: number, altitude: number) => {
-
-  if (isOnGround)
-    return FlightIcon;
-
-  if (altitude <= 0)
-    return FlightIcon;
-
-  if (verticalRate > 0 && altitude < altitudeStateLimit)
-    return FlightTakeoffIcon;
-
-  if (verticalRate < 0 && altitude < altitudeStateLimit)
-    return FlightLandIcon;
-
-  return FlightIcon;
 };
 
 export const getRotation = (trueTrack: number, verticalRate: number, altitude: number) => {
@@ -65,13 +19,14 @@ export const getRotation = (trueTrack: number, verticalRate: number, altitude: n
 
 export const getColor = (altitude: number) => {
 
-  var percent = altitude / 13000 * 100;
+  let percent = altitude / 13000 * 100;
   if (percent > 100)
     percent = 100;
   if (percent < 0)
     percent = 0;
 
-  var r, g, b = 0;
+  let r, g;
+  const b = 0;
   if (percent < 50) {
     r = 255;
     g = Math.round(5.1 * percent);
@@ -81,9 +36,23 @@ export const getColor = (altitude: number) => {
     r = Math.round(510 - 5.10 * percent);
   }
 
-  var h = r * 0x10000 + g * 0x100 + b * 0x1;
+  const h = r * 0x10000 + g * 0x100 + b * 0x1;
 
   return '#' + ('000000' + h.toString(16)).slice(-6);
+};
+
+export const getIconName = (isOnGround: boolean, verticalRate: number, altitude: number, trueTrack: number): string => {
+  if (isOnGround) return 'flight-icon';
+
+  const isFlipped = trueTrack > 90 && trueTrack < 270;
+
+  if (verticalRate > 0 && altitude < altitudeStateLimit)
+    return isFlipped ? 'flight-takeoff-flipped-icon' : 'flight-takeoff-icon';
+
+  if (verticalRate < 0 && altitude < altitudeStateLimit)
+    return isFlipped ? 'flight-land-flipped-icon' : 'flight-land-icon';
+
+  return 'flight-icon';
 };
 
 export const getStatusText = (isOnGround: boolean, verticalRate: number, altitude: number): string => {

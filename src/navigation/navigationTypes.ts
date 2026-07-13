@@ -9,9 +9,7 @@ export interface INavigationElement {
   name: string;
   importPath: string;
   type: NavigationTypeEnumeration;
-  Icon?: React.FunctionComponent<any> | React.ComponentType<any> | string;
+  Icon?: React.FunctionComponent<Record<string, never>> | React.ComponentType<Record<string, never>> | string;
 };
 
-export interface INavigationElementProps {
-
-};
+export type INavigationElementProps = Record<string, never>;

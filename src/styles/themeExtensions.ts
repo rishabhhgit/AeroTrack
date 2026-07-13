@@ -23,5 +23,6 @@ declare module '@mui/material/styles' {
 
 // Module augmentation emotion
 declare module "@emotion/react" {
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type
   export interface Theme extends MUITheme { }
 };

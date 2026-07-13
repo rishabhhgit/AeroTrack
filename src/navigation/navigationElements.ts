@@ -1,48 +1,52 @@
-import { mapViewNavigationData, settingsViewNavigationData, aboutViewNavigationData } from '../views/viewKeys.ts';
+import React from 'react'
+import {
+  dashboardViewNavigationData,
+  flightsTableViewNavigationData,
+  mapViewNavigationData,
+  settingsViewNavigationData,
+  aboutViewNavigationData,
+  favoritesViewNavigationData,
+  recentlyViewedNavigationData,
+  flightDetailsNavigationData,
+} from '../views/viewKeys.js'
 
 // Types
-import type { INavigationElement } from './navigationTypes.js';
+import type { INavigationElement } from './navigationTypes.js'
 
 export const navigationElements: Array<INavigationElement> = [
-  aboutViewNavigationData,
+  dashboardViewNavigationData,
+  flightsTableViewNavigationData,
+  mapViewNavigationData,
+  favoritesViewNavigationData,
+  recentlyViewedNavigationData,
   settingsViewNavigationData,
-  mapViewNavigationData
-];
+  aboutViewNavigationData,
+  flightDetailsNavigationData,
+]
 
 export const getImportableView = async (dynamicFilePath: string) => {
+  let page: { default: React.ComponentType };
 
-  let page: any;
-
-  // These are the only views that are currently imported dynamically
-  // This is a workaround to avoid dynamic/static imports warning for all views in vite
-  if (dynamicFilePath === 'views/MapView') {
-    page = await import('./../views/MapView.tsx');
+  if (dynamicFilePath === 'views/DashboardView') {
+    page = await import('./../views/DashboardView.tsx')
+  } else if (dynamicFilePath === 'views/FlightsTableView') {
+    page = await import('./../views/FlightsTableView.tsx')
+  } else if (dynamicFilePath === 'views/MapView') {
+    page = await import('./../views/MapView.tsx')
+  } else if (dynamicFilePath === 'views/SettingsView') {
+    page = await import('./../views/SettingsView.tsx')
+  } else if (dynamicFilePath === 'views/AboutView') {
+    page = await import('./../views/AboutView.tsx')
+  } else if (dynamicFilePath === 'views/FavoritesView') {
+    page = await import('./../views/FavoritesView.tsx')
+  } else if (dynamicFilePath === 'views/RecentlyViewedView') {
+    page = await import('./../views/RecentlyViewedView.tsx')
+  } else if (dynamicFilePath === 'views/FlightDetailsView') {
+    page = await import('./../views/FlightDetailsView.tsx')
+  } else {
+    console.error(`Unknown view path: ${dynamicFilePath}`);
+    page = await import('./../views/DashboardView.tsx');
   }
-  if (dynamicFilePath === 'views/SettingsView') {
-    page = await import('./../views/SettingsView.tsx');
-  }
-  if (dynamicFilePath === 'views/AboutView') {
-    page = await import('./../views/AboutView.tsx');
-  }
 
-  // This is a generic approach to dynamically import views based on the path
-  // It works fine but triggers a warning in vite about dynamic/static imports
-  // const splitName = dynamicFilePath.split('/');
-  // switch (splitName.length) {
-
-  //   case 1:
-  //     page = await import(`./../${splitName[0]}.tsx`);
-  //     break;
-  //   case 2:
-  //     page = await import(`./../${splitName[0]}/${splitName[1]}.tsx`);
-  //     break;
-  //   case 3:
-  //     page = await import(`./../${splitName[0]}/${splitName[1]}/${splitName[2]}.tsx`);
-  //     break;
-  //   case 4:
-  //     page = await import(`./../${splitName[0]}/${splitName[1]}/${splitName[2]}/${splitName[3]}.tsx`);
-  //     break;
-  // }
-
-  return page;
-};
+  return page
+}

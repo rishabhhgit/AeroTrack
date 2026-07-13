@@ -40,9 +40,15 @@ export class ServiceProvider implements IServiceProvider {
 
     // Invoke the start method of each service
     const startResults: boolean[] = [];
-    this.serviceMap.forEach(async (service, key) => {
-      startResults.push(await service.start(this));
-    });
+    const services = Array.from(this.serviceMap.values());
+    for (const service of services) {
+      try {
+        startResults.push(await service.start(this));
+      } catch (error) {
+        console.error(`Service '${service.key}' threw during start:`, error);
+        startResults.push(false);
+      }
+    }
 
     if (startResults.some(result => !result)) {
       console.error(`Not all services could be started. '${startResults.filter(result => !result).length}' services failed!`);
@@ -50,7 +56,7 @@ export class ServiceProvider implements IServiceProvider {
       console.info(`All services started and ready.`);
     }
 
-    return startResults.length === 0;
+    return startResults.length > 0 && startResults.every(result => result);
   };
 
   public stopServices = async () => {
@@ -59,9 +65,15 @@ export class ServiceProvider implements IServiceProvider {
     console.info(`Stopping services.`);
 
     const stopResults: boolean[] = [];
-    this.serviceMap.forEach(async (service, key) => {
-      stopResults.push(await service.stop());
-    });
+    const services = Array.from(this.serviceMap.values());
+    for (const service of services) {
+      try {
+        stopResults.push(await service.stop());
+      } catch (error) {
+        console.error(`Service '${service.key}' threw during stop:`, error);
+        stopResults.push(false);
+      }
+    }
 
     if (stopResults.some(result => !result)) {
       console.error(`Not all services could be stopped. '${stopResults.filter(result => !result).length}' services failed!`);
@@ -69,6 +81,6 @@ export class ServiceProvider implements IServiceProvider {
       console.info(`All services stopped.`);
     }
 
-    return stopResults.length === 0;
+    return stopResults.every(result => result);
   };
 }

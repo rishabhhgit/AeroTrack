@@ -7,7 +7,7 @@ import type { Theme } from '@mui/material';
 export interface IAboutData {
   ariaLabel: string;
   url: string;
-  Icon: React.FunctionComponent<any> | React.ComponentType<any>
+  Icon: React.ComponentType<{ sx?: Record<string, unknown> }>
 };
 
 interface ILocalProps {
@@ -36,7 +36,7 @@ const AboutContent: React.FC<Props> = (props) => {
           width: getBoxSize(),
           color: (theme) => theme.palette.text.primary,
           fill: (theme: Theme) => theme.palette.text.primary,
-          ['--offsetDegree' as any]: `${elementOffset}deg`
+          ['--offsetDegree' as string]: `${elementOffset}deg`
         }}>
 
         {props.elements.map((elementData, index) => {
@@ -50,7 +50,7 @@ const AboutContent: React.FC<Props> = (props) => {
                 top: 'calc(50% - 16px)',
                 left: 'calc(50% - 48px)',
                 animation: 'genericRotating 30s linear infinite',
-                ['--offsetFactor' as any]: index
+                ['--offsetFactor' as string]: index
               }}>
 
               <IconButton
@@ -78,7 +78,7 @@ const AboutContent: React.FC<Props> = (props) => {
   };
 
   // Get element offset
-  const elementOffset = 360 / props.elements.length;
+  const elementOffset = props.elements.length > 0 ? 360 / props.elements.length : 0;
 
   return (
     <Box

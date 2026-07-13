@@ -1,20 +1,22 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Box } from '@mui/material';
-import { useNavigation } from '../components/infrastructure/NavigationProvider.js';
+import { useNavigation } from '../components/infrastructure/NavigationContext.js';
 import NavigationElementInjector from '../components/infrastructure/NavigationElementInjector.js';
 import { getImportableView } from '../navigation/navigationElements.js';
 
-interface ILocalProps {
-}
-type Props = ILocalProps;
+import type { INavigationElement } from '../navigation/navigationTypes.js';
 
-const StartPage: React.FC<Props> = (props) => {
+type Props = Record<string, never>;
 
-  // Fields
-  const contextName: string = 'StartPage'
+const StartPage: React.FC<Props> = (_props) => {
 
   // Hooks
   const { currentViewElement } = useNavigation();
+
+  const handleInject = useCallback(
+    (navigationElement: INavigationElement) => React.lazy(() => getImportableView(navigationElement.importPath)),
+    []
+  );
 
   if (currentViewElement === null || currentViewElement === undefined)
     return null;
@@ -23,17 +25,18 @@ const StartPage: React.FC<Props> = (props) => {
 
     <Box
       sx={{
-        height: '100%',
+        flex: 1,
         width: '100%',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        minHeight: 0,
         userSelect: 'none'
       }}>
 
       <NavigationElementInjector
         navigationElement={currentViewElement}
-        onInject={navigationElement => React.lazy(() => getImportableView(navigationElement.importPath))} />
+        onInject={handleInject} />
 
     </Box>
   );

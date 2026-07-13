@@ -3,8 +3,8 @@ import { Box } from '@mui/material';
 
 interface ILocalProps {
   sourceName: string;
-  errorMessage: string;
-  stackInfo?: string;
+  errorMessage: string | null;
+  stackInfo?: string | null;
 }
 type Props = ILocalProps;
 

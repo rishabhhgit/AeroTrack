@@ -5,7 +5,7 @@ import { StateVectorChangeTypeEnumeration } from '../opensky/types.js';
 // Types
 import type { IService } from './infrastructure/serviceTypes.js';
 import type { Feature, GeoJsonProperties, Point } from 'geojson';
-import type { IStateVectorData, IAircraftTrack, IStateVector } from '../opensky/types.js';
+import type { IStateVectorData } from '../opensky/types.js';
 
 // Earth radius in meters
 const earthRadius = 6371008.8;
@@ -47,7 +47,7 @@ export class GeospatialService extends Service implements IGeospatialService {
   public restartPathPrediction = (stateVectors: IStateVectorData) => {
 
     // Clear any existing prediction interval
-    clearInterval(this.pathPredictionIntervalID);
+    clearTimeout(this.pathPredictionIntervalID);
 
     // Check for active keys (icao24)
     const activeKeys = new Set<string>();
@@ -95,7 +95,8 @@ export class GeospatialService extends Service implements IGeospatialService {
   };
 
   public stopPathPrediction = () => {
-    clearInterval(this.pathPredictionIntervalID);
+    clearTimeout(this.pathPredictionIntervalID);
+    this.predictionStates.clear();
   };
 
   public onPathPredictionUpdated = (contextKey: string, callbackHandler: PathPredictionUpdatedCallbackMethod) => {
@@ -114,7 +115,7 @@ export class GeospatialService extends Service implements IGeospatialService {
   public offPathPredictionUpdated = (registerKey: string) => {
 
     // Delete callback
-    const existingSubscriber = Object.entries(this.pathPredictionUpdatedSubscriberDictionary).find(([key, value]) => key === registerKey);
+    const existingSubscriber = Object.entries(this.pathPredictionUpdatedSubscriberDictionary).find(([key, _value]) => key === registerKey);
     if (existingSubscriber) {
 
       delete this.pathPredictionUpdatedSubscriberDictionary[registerKey];
@@ -132,7 +133,8 @@ export class GeospatialService extends Service implements IGeospatialService {
   };
 
   protected async onStopping(): Promise<boolean> {
-    clearInterval(this.pathPredictionIntervalID);
+    clearTimeout(this.pathPredictionIntervalID);
+    this.predictionStates.clear();
     return true;
   };
 
@@ -152,7 +154,6 @@ export class GeospatialService extends Service implements IGeospatialService {
       const lastPred = predictionState.lastPredicted;
       const velocity = predictionState.velocity;
       const bearing = predictionState.bearing;
-      const verticalRate = predictionState.verticalRate;
       const altitude = predictionState.altitude;
       const staleCount = predictionState.staleCount;
 
@@ -163,10 +164,10 @@ export class GeospatialService extends Service implements IGeospatialService {
       // Origin: last predicted position
       const origin: [number, number] = [lastPred.lon, lastPred.lat];
 
-      // Calculate distance based on velocity and vertical rate
+      // Calculate distance based on velocity
       let distance = velocity * dt;
-      if (verticalRate !== 0) distance -= (verticalRate * dt);
-      if (altitude > 0) distance = (distance * earthRadius) / (earthRadius + altitude);
+      // Altitude correction: at higher altitude, the same angular distance covers more ground
+      if (altitude > 0) distance = distance * (earthRadius + altitude) / earthRadius;
 
       // Calculate the destination point
       const predicted = destination(origin, distance, bearing, { units: "meters" });
@@ -187,7 +188,9 @@ export class GeospatialService extends Service implements IGeospatialService {
     }
 
     // Callbacks
-    Object.values(this.pathPredictionUpdatedSubscriberDictionary).forEach(cb => cb(features));
+    Object.values(this.pathPredictionUpdatedSubscriberDictionary).forEach(cb => {
+      try { cb(features); } catch (e) { console.error('PathPrediction subscriber error:', e); }
+    });
 
     // Trigger the next path calculation after the defined interval
     this.pathPredictionIntervalID = window.setTimeout(this.calculatePath, this.pathPredictionInterval, stateVectors);
