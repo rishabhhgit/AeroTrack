@@ -3,7 +3,7 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "routes": [
-    { "src": "/oskytokenapi(.*)", "dest": "/api/oskytokenapi.ts" },
+    { "src": "/oskytokenapi(.*)", "dest": "/api/oskytokenapi" },
     { "src": "/oskyapi/(.*)", "dest": "/api/oskyapi/$1" },
     { "src": "/airportdbapi/(.*)", "dest": "/api/airportdbapi/$1" },
     { "handle": "filesystem" },
