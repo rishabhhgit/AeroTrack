@@ -122,6 +122,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+console.log("PORT env:", process.env.PORT, "→ using:", PORT);
 console.log(`About to listen on ${PORT}...`);
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`LISTENING on 0.0.0.0:${PORT}`);
