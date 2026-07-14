@@ -1,6 +1,4 @@
 name = "opensky-proxy"
 main = "index.js"
-compatibility_date = "2024-01-01"
-
-[vars]
-ALLOWED_ORIGIN = "https://aeroflight.up.railway.app"
+compatibility_date = "2024-09-23"
+workers_dev = true
