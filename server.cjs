@@ -184,12 +184,6 @@ function mergeAircraftFromResponse(body) {
     return 0;
   }
 }
-    }
-    return added;
-  } catch (e) {
-    return 0;
-  }
-}
 
 async function fetchTile(tile) {
   const url = `https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`;
