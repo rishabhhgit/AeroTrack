@@ -62,7 +62,7 @@ function httpsRequest(url, options = {}) {
   });
 }
 
-function bboxToTiles(lamin, lomin, lamax, lomax, maxRadiusNm = 240, maxTiles = 12) {
+function bboxToTiles(lamin, lomin, lamax, lomax, maxRadiusNm = 240, maxTiles = 48) {
   const latSpanNm = (lamax - lamin) * 60;
   const lonCenter = (lomin + lomax) / 2;
   const lonSpanNm = (lomax - lomin) * 60 * Math.cos(((lamin + lamax) / 2) * Math.PI / 180);
@@ -72,8 +72,8 @@ function bboxToTiles(lamin, lomin, lamax, lomax, maxRadiusNm = 240, maxTiles = 1
     return [{ lat: (lamin + lamax) / 2, lon: lonCenter, radius: Math.max(r, 50) }];
   }
 
-  const latStepsNeeded = Math.ceil(latSpanNm / (maxRadiusNm * 1.6));
-  const lonStepsNeeded = Math.ceil(lonSpanNm / (maxRadiusNm * 1.6));
+  const latStepsNeeded = Math.ceil(latSpanNm / (maxRadiusNm * 1.4));
+  const lonStepsNeeded = Math.ceil(lonSpanNm / (maxRadiusNm * 1.4));
   const totalGrid = latStepsNeeded * lonStepsNeeded;
 
   let latSteps, lonSteps;
@@ -103,6 +103,29 @@ function bboxToTiles(lamin, lomin, lamax, lomax, maxRadiusNm = 240, maxTiles = 1
     }
   }
   return tiles.length > 0 ? tiles : [{ lat: (lamin + lamax) / 2, lon: lonCenter, radius: maxRadiusNm }];
+}
+
+async function fetchTilesBatched(tiles, batchSize = 5, delayMs = 1100) {
+  const allAircraft = [];
+  for (let i = 0; i < tiles.length; i += batchSize) {
+    const batch = tiles.slice(i, i + batchSize);
+    const results = await Promise.allSettled(
+      batch.map((tile) =>
+        httpsRequest(`https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`, { timeout: 15000 })
+      )
+    );
+    for (const r of results) {
+      if (r.status !== "fulfilled") continue;
+      try {
+        const data = JSON.parse(r.value.body);
+        if (data.ac) allAircraft.push(...data.ac);
+      } catch (e) { /* skip parse errors */ }
+    }
+    if (i + batchSize < tiles.length) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return allAircraft;
 }
 
 function convertToOpenSkyFormat(airplanesData) {
@@ -174,25 +197,15 @@ const server = http.createServer(async (req, res) => {
       const lomax = parseFloat(urlObj.searchParams.get("lomax") || "15");
       const tiles = bboxToTiles(lamin, lomin, lamax, lomax);
       console.log(`bbox(${lamin.toFixed(1)},${lomin.toFixed(1)},${lamax.toFixed(1)},${lomax.toFixed(1)}) -> ${tiles.length} tile(s)`);
+      const allAircraft = await fetchTilesBatched(tiles, 2, 1100);
       const allStates = [];
       const seenHex = new Set();
-      const results = await Promise.allSettled(
-        tiles.map((tile) =>
-          httpsRequest(`https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`, { timeout: 20000 })
-        )
-      );
-      for (const r of results) {
-        if (r.status !== "fulfilled") continue;
-        try {
-          const data = JSON.parse(r.value.body);
-          const converted = convertToOpenSkyFormat(data);
-          for (const sv of converted.states) {
-            if (sv[0] && !seenHex.has(sv[0])) {
-              seenHex.add(sv[0]);
-              allStates.push(sv);
-            }
-          }
-        } catch (e) { console.error("Parse error:", e.message); }
+      const converted = convertToOpenSkyFormat({ ac: allAircraft });
+      for (const sv of converted.states) {
+        if (sv[0] && !seenHex.has(sv[0])) {
+          seenHex.add(sv[0]);
+          allStates.push(sv);
+        }
       }
       console.log(`Total unique aircraft: ${allStates.length}`);
       const now = Math.floor(Date.now() / 1000);
