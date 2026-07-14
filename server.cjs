@@ -67,22 +67,37 @@ function httpsRequest(url, options = {}) {
 function getCountryFromHex(hex) {
   if (!hex || hex.length < 2) return "Unknown";
   const p = parseInt(hex.substring(0, 2), 16);
-  if (p <= 0x0F) return "Reserved";
-  if (p <= 0x1F) return "Africa";
-  if (p <= 0x2F) return "Africa";
-  if (p <= 0x3F) return "Germany";
-  if (p <= 0x4F) return "United Kingdom";
-  if (p <= 0x5F) return "United States";
-  if (p <= 0x6F) return "South America";
-  if (p <= 0x7F) return "Europe";
-  if (p <= 0x8F) return "Oceania";
-  if (p <= 0x9F) return "Unknown";
-  if (p <= 0xAF) return "Asia";
-  if (p <= 0xBF) return "China";
-  if (p <= 0xCF) return "Canada";
-  if (p <= 0xDF) return "Germany";
-  if (p <= 0xEF) return "Europe";
-  if (p <= 0xFF) return "France";
+  if (p >= 0x50 && p <= 0x5F) return "United States";
+  if (p >= 0xC0 && p <= 0xCF) return "Canada";
+  if (p >= 0xB0 && p <= 0xBF) return "China";
+  if (p >= 0xD0 && p <= 0xDF) return "Germany";
+  if (p >= 0x70 && p <= 0x7F) return "Russia";
+  if (p >= 0x80 && p <= 0x83) return "Australia";
+  if (p >= 0xA0 && p <= 0xA3) return "India";
+  if (p >= 0x60 && p <= 0x63) return "Brazil";
+  if (p >= 0x84 && p <= 0x87) return "New Zealand";
+  if (p >= 0x40 && p <= 0x43) return "United Kingdom";
+  if (p >= 0xF4 && p <= 0xF7) return "United Kingdom";
+  if (p >= 0x48 && p <= 0x4B) return "France";
+  if (p >= 0xE0 && p <= 0xE3) return "France";
+  if (p >= 0xF0 && p <= 0xF3) return "France";
+  if (p >= 0x34 && p <= 0x37) return "Spain";
+  if (p >= 0xE4 && p <= 0xE7) return "Spain";
+  if (p >= 0x38 && p <= 0x3B) return "Italy";
+  if (p >= 0xE8 && p <= 0xEB) return "Italy";
+  if (p >= 0x30 && p <= 0x33) return "Germany";
+  if (p >= 0x44 && p <= 0x47) return "Germany";
+  if (p >= 0xF8 && p <= 0xFB) return "Germany";
+  if (p >= 0x3C && p <= 0x3F) return "Netherlands";
+  if (p >= 0x4C && p <= 0x4F) return "Europe";
+  if (p >= 0xEC && p <= 0xEF) return "Europe";
+  if (p >= 0xFC && p <= 0xFF) return "Europe";
+  if (p >= 0xA4 && p <= 0xAF) return "Asia";
+  if (p >= 0x64 && p <= 0x6F) return "South America";
+  if (p >= 0x20 && p <= 0x2F) return "South America";
+  if (p >= 0x10 && p <= 0x1F) return "Africa";
+  if (p >= 0x88 && p <= 0x8F) return "Oceania";
+  if (p >= 0x00 && p <= 0x0F) return "Reserved";
   return "Unknown";
 }
 
@@ -158,7 +173,7 @@ function mergeAircraftFromResponse(body) {
     let count = 0;
     for (const ac of data.ac) {
       if (ac.lat == null || ac.lon == null || !ac.hex) continue;
-      const existing = aircraftCache.get(ac.hex);
+      if (ac.alt_baro != null && ac.alt_baro !== "ground" && (ac.alt_baro > 60000 || ac.alt_baro < -2000)) continue;
       aircraftCache.set(ac.hex, {
         hex: ac.hex,
         flight: (ac.flight || "").trim(),
