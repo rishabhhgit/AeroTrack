@@ -2,8 +2,10 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-process.on("uncaughtException", (err) => { console.error("UNCAUGHT:", err); process.exit(1); });
+process.on("uncaughtException", (err) => { console.error("UNCAUGHT:", err); });
 process.on("unhandledRejection", (err) => { console.error("UNHANDLED:", err); });
+
+setInterval(() => console.log(`HEARTBEAT ${new Date().toISOString()}`), 30000);
 
 const OPENSKY_AUTH_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token";
 const OPENSKY_API_BASE = "https://opensky-network.org/api";
@@ -13,18 +15,28 @@ const CLIENT_ID = process.env.VITE_REACT_OSKY_CLIENT_ID;
 const CLIENT_SECRET = process.env.VITE_REACT_OSKY_CLIENT_SECRET;
 const AIRPORTDB_TOKEN = process.env.VITE_AIRPORTDB_TOKEN;
 
-console.log("Env check:", JSON.stringify({
+console.log("Env:", JSON.stringify({
   clientId: CLIENT_ID ? "SET" : "MISSING",
   clientSecret: CLIENT_SECRET ? "SET" : "MISSING",
   airportDbToken: AIRPORTDB_TOKEN ? "SET" : "MISSING",
+  port: process.env.PORT,
+  allEnvKeys: Object.keys(process.env).filter(k => k.startsWith("VITE") || k === "PORT" || k.startsWith("RAILWAY")),
 }));
 
 let distPath = path.join(__dirname, "dist");
 if (!fs.existsSync(distPath)) {
   distPath = __dirname;
 }
+console.log("__dirname:", __dirname, "distPath:", distPath);
 
-const indexHtml = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
+let indexHtml;
+try {
+  indexHtml = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
+  console.log("index.html loaded, length:", indexHtml.length);
+} catch (e) {
+  console.error("FAILED to load index.html:", e.message);
+  indexHtml = "<h1>AeroTrack - index.html not found</h1>";
+}
 
 const server = http.createServer(async (req, res) => {
   console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
@@ -92,18 +104,17 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (req.url === "/") {
-    res.writeHead(200, { "Content-Type": "text/html" });
-    return res.end(indexHtml);
-  }
-
-  const filePath = path.join(distPath, req.url);
-  if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-    const ext = path.extname(filePath);
-    const types = { ".js": "application/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon" };
-    const content = fs.readFileSync(filePath);
-    res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
-    return res.end(content);
+  const filePath = path.join(distPath, req.url === "/" ? "index.html" : req.url);
+  try {
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const ext = path.extname(filePath);
+      const types = { ".js": "application/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff" };
+      const content = fs.readFileSync(filePath);
+      res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
+      return res.end(content);
+    }
+  } catch (e) {
+    // fall through
   }
 
   res.writeHead(200, { "Content-Type": "text/html" });
@@ -111,7 +122,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+console.log(`About to listen on ${PORT}...`);
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`AeroTrack server listening on 0.0.0.0:${PORT}`);
-  console.log(`Dist path: ${distPath}`);
+  console.log(`LISTENING on 0.0.0.0:${PORT}`);
+});
+server.on("error", (err) => {
+  console.error("SERVER ERROR:", err);
 });
