@@ -170,6 +170,9 @@ function mergeAircraftFromResponse(body) {
   }
 }
 
+const CONCURRENCY = 5;
+const DELAY_BETWEEN_BATCHES = 1100;
+
 async function fetchTile(tile) {
   const url = `https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`;
   try {
@@ -185,28 +188,27 @@ async function fetchTile(tile) {
   return 0;
 }
 
+async function scanTiles(tiles, label) {
+  const start = Date.now();
+  let done = 0;
+  for (let i = 0; i < tiles.length; i += CONCURRENCY) {
+    const batch = tiles.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map((t) => fetchTile(t)));
+    done += batch.length;
+    if (done % 50 < CONCURRENCY) {
+      console.log(`${label}: ${done}/${tiles.length} tiles, cache: ${aircraftCache.size}`);
+    }
+    await new Promise((r) => setTimeout(r, DELAY_BETWEEN_BATCHES));
+  }
+  return ((Date.now() - start) / 1000).toFixed(1);
+}
+
 async function runGlobalScan() {
   if (globalScanRunning) return;
   globalScanRunning = true;
   const tiles = generateGlobalGrid();
-  const start = Date.now();
-  console.log(`Starting global scan: ${tiles.length} tiles`);
-
-  for (let i = 0; i < tiles.length; i++) {
-    const reqStart = Date.now();
-    await fetchTile(tiles[i]);
-
-    if ((i + 1) % 50 === 0) {
-      console.log(`Scan progress: ${i + 1}/${tiles.length} tiles, cache: ${aircraftCache.size}`);
-    }
-
-    const elapsed = Date.now() - reqStart;
-    if (elapsed < RATE_LIMIT_MS) {
-      await new Promise(r => setTimeout(r, RATE_LIMIT_MS - elapsed));
-    }
-  }
-
-  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  console.log(`Starting global scan: ${tiles.length} tiles (${CONCURRENCY}x parallel)`);
+  const elapsed = await scanTiles(tiles, "Global");
   console.log(`Global scan complete: ${tiles.length} tiles in ${elapsed}s, cache: ${aircraftCache.size}`);
   globalScanRunning = false;
   globalScanComplete = true;
@@ -218,18 +220,9 @@ async function runViewportScan(bounds) {
   viewportScanRunning = true;
   const tiles = generateViewportTiles(bounds);
   if (tiles.length === 0) { viewportScanRunning = false; return; }
-  console.log(`Viewport scan: ${tiles.length} tiles for bounds [${bounds.southernLatitude.toFixed(1)},${bounds.westernLongitude.toFixed(1)} - ${bounds.northernLatitude.toFixed(1)},${bounds.easternLongitude.toFixed(1)}]`);
-
-  for (let i = 0; i < tiles.length; i++) {
-    const reqStart = Date.now();
-    await fetchTile(tiles[i]);
-    const elapsed = Date.now() - reqStart;
-    if (elapsed < RATE_LIMIT_MS) {
-      await new Promise(r => setTimeout(r, RATE_LIMIT_MS - elapsed));
-    }
-  }
-
-  console.log(`Viewport scan complete: ${tiles.length} tiles, cache: ${aircraftCache.size}`);
+  console.log(`Viewport scan: ${tiles.length} tiles`);
+  const elapsed = await scanTiles(tiles, "Viewport");
+  console.log(`Viewport scan complete: ${tiles.length} tiles in ${elapsed}s, cache: ${aircraftCache.size}`);
   viewportScanRunning = false;
 }
 
