@@ -59,6 +59,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       token_type: data.token_type,
     });
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    const e = err as any;
+    res.status(500).json({
+      error: e.message,
+      code: e.code,
+      type: e.type,
+      cause: e.cause?.message || null,
+      name: e.name
+    });
   }
 }
