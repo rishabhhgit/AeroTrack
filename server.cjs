@@ -2,35 +2,17 @@ const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const path = require("path");
-const dns = require("dns");
-const net = require("net");
 
 process.on("uncaughtException", (err) => { console.error("UNCAUGHT:", err); });
 process.on("unhandledRejection", (err) => { console.error("UNHANDLED:", err); });
 
-dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
-
 setInterval(() => console.log(`HEARTBEAT ${new Date().toISOString()}`), 30000);
 
-const OPENSKY_AUTH_HOST = "auth.opensky-network.org";
-const OPENSKY_API_HOST = "opensky-network.org";
+const AIRPLANE_HOST = "api.airplanes.live";
 const AIRPORTDB_HOST = "airportdb.io";
-const OPENSKY_WORKER_URL = process.env.OPENSKY_WORKER_URL || "";
-
-dns.lookup(AIRPORTDB_HOST, (err, addr) => console.log("DNS airportdb.io:", err ? err.message : addr));
-if (OPENSKY_WORKER_URL) {
-  console.log("OpenSky relay:", OPENSKY_WORKER_URL);
-} else {
-  dns.lookup(OPENSKY_API_HOST, (err, addr) => console.log("DNS opensky-network.org:", err ? err.message : addr));
-}
-
-const CLIENT_ID = process.env.VITE_REACT_OSKY_CLIENT_ID;
-const CLIENT_SECRET = process.env.VITE_REACT_OSKY_CLIENT_SECRET;
 const AIRPORTDB_TOKEN = process.env.VITE_AIRPORTDB_TOKEN;
 
 console.log("Env:", JSON.stringify({
-  clientId: CLIENT_ID ? "SET" : "MISSING",
-  clientSecret: CLIENT_SECRET ? "SET" : "MISSING",
   airportDbToken: AIRPORTDB_TOKEN ? "SET" : "MISSING",
   port: process.env.PORT,
 }));
@@ -68,7 +50,6 @@ function httpsRequest(url, options = {}) {
       method,
       headers,
       timeout,
-      family: 4,
     }, (res) => {
       let data = "";
       res.on("data", (chunk) => data += chunk);
@@ -79,6 +60,46 @@ function httpsRequest(url, options = {}) {
     if (body) req.write(body);
     req.end();
   });
+}
+
+function bboxToCenterRadius(lamin, lomin, lamax, lomax) {
+  const centerLat = (lamin + lamax) / 2;
+  const centerLon = (lomin + lomax) / 2;
+  const latSpan = Math.abs(lamax - lamin) / 2;
+  const lonSpan = Math.abs(lomax - lomin) / 2;
+  const radiusNm = Math.sqrt(
+    Math.pow(latSpan * 60, 2) + Math.pow(lonSpan * 60 * Math.cos(centerLat * Math.PI / 180), 2)
+  ) + 10;
+  return { centerLat, centerLon, radiusNm: Math.min(Math.round(radiusNm), 250) };
+}
+
+function convertToOpenSkyFormat(airplanesData) {
+  const now = Math.floor(Date.now() / 1000);
+  const states = [];
+  for (const ac of (airplanesData.ac || [])) {
+    if (ac.lat == null || ac.lon == null) continue;
+    states.push([
+      ac.hex || null,
+      (ac.flight || "").trim() || null,
+      "Unknown",
+      ac.seen_pos != null ? Math.round(now - ac.seen_pos) : null,
+      ac.seen != null ? Math.round(now - ac.seen) : now,
+      ac.lon,
+      ac.lat,
+      ac.alt_baro != null && ac.alt_baro !== "ground" ? ac.alt_baro * 0.3048 : null,
+      ac.alt_baro === "ground",
+      ac.gs != null ? ac.gs * 0.514444 : null,
+      ac.track != null ? ac.track : null,
+      ac.baro_rate != null ? ac.baro_rate * 0.00508 : null,
+      null,
+      ac.alt_geom != null && ac.alt_geom !== "ground" ? ac.alt_geom * 0.3048 : null,
+      ac.squawk || null,
+      ac.spi === 1,
+      0,
+      0,
+    ]);
+  }
+  return { time: now, states };
 }
 
 const server = http.createServer(async (req, res) => {
@@ -96,85 +117,58 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url === "/test") {
     const results = {};
-    if (OPENSKY_WORKER_URL) {
-      try {
-        const r = await httpsRequest(`${OPENSKY_WORKER_URL}?path=/api/states/all&query=limit%3D1`, { timeout: 15000 });
-        results.opensky_via_worker = { status: r.status, bytes: r.body.length, snippet: r.body.substring(0, 100) };
-      } catch (e) { results.opensky_via_worker = { error: e.message }; }
-    } else {
-      try {
-        const r = await httpsRequest(`https://${OPENSKY_API_HOST}/api/states/all?limit=1`, { timeout: 10000 });
-        results.opensky = { status: r.status, bytes: r.body.length, snippet: r.body.substring(0, 100) };
-      } catch (e) { results.opensky = { error: e.message }; }
-    }
+    try {
+      const r = await httpsRequest(`https://${AIRPLANE_HOST}/v2/point/40.7128/-74.0060/250`, { timeout: 15000 });
+      const data = JSON.parse(r.body);
+      results.airplanes_live = { status: r.status, aircraft: data.ac ? data.ac.length : 0 };
+    } catch (e) { results.airplanes_live = { error: e.message }; }
     try {
       const r = await httpsRequest(`https://${AIRPORTDB_HOST}/api/v1/search/ICN?apiToken=${AIRPORTDB_TOKEN}`, { timeout: 10000 });
       results.airportdb = { status: r.status, bytes: r.body.length };
     } catch (e) { results.airportdb = { error: e.message }; }
-    results.workerUrl = OPENSKY_WORKER_URL || "(not set)";
     return json(res, 200, results);
   }
 
   if (req.url.startsWith("/oskytokenapi")) {
-    if (!CLIENT_ID || !CLIENT_SECRET) {
-      return json(res, 500, { error: "Missing credentials" });
-    }
-    const params = new URLSearchParams();
-    params.append("grant_type", "client_credentials");
-    params.append("client_id", CLIENT_ID);
-    params.append("client_secret", CLIENT_SECRET);
+    return json(res, 200, { access_token: "dummy", expires_in: 999999 });
+  }
+
+  if (req.url.startsWith("/oskyapi/states/all")) {
     try {
-      console.log("Fetching OpenSky token...");
-      let tokenResp;
-      if (OPENSKY_WORKER_URL) {
-        const workerUrl = `${OPENSKY_WORKER_URL}?path=/auth/realms/opensky-network/protocol/openid-connect/token`;
-        tokenResp = await httpsRequest(workerUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: params.toString(),
-          timeout: 15000,
-        });
-      } else {
-        tokenResp = await httpsRequest(`https://${OPENSKY_AUTH_HOST}/auth/realms/opensky-network/protocol/openid-connect/token`, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: params.toString(),
-          timeout: 15000,
-        });
-      }
-      console.log("OpenSky token response:", tokenResp.status);
+      const urlObj = new URL(req.url, "http://localhost");
+      const lamin = parseFloat(urlObj.searchParams.get("lamin") || "45");
+      const lomin = parseFloat(urlObj.searchParams.get("lomin") || "0");
+      const lamax = parseFloat(urlObj.searchParams.get("lamax") || "55");
+      const lomax = parseFloat(urlObj.searchParams.get("lomax") || "15");
+      const { centerLat, centerLon, radiusNm } = bboxToCenterRadius(lamin, lomin, lamax, lomax);
+      console.log(`Proxying: bbox(${lamin},${lomin},${lamax},${lomax}) -> center(${centerLat.toFixed(2)},${centerLon.toFixed(2)}) r=${radiusNm}nm`);
+      const apiResp = await httpsRequest(`https://${AIRPLANE_HOST}/v2/point/${centerLat}/${centerLon}/${radiusNm}`, { timeout: 25000 });
+      console.log("airplanes.live response:", apiResp.status, "bytes:", apiResp.body.length);
+      const airplanesData = JSON.parse(apiResp.body);
+      const openSkyData = convertToOpenSkyFormat(airplanesData);
       cors(res);
-      res.writeHead(tokenResp.status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      return res.end(tokenResp.body);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(openSkyData));
     } catch (err) {
-      console.error("OpenSky token error:", err.message);
-      return json(res, 500, { error: err.message });
+      console.error("airplanes.live proxy error:", err.message);
+      return json(res, 502, { error: "airplanes.live API error: " + err.message });
     }
   }
 
   if (req.url.startsWith("/oskyapi/")) {
     const apiPath = req.url.slice("/oskyapi/".length);
-    const headers = { Accept: "application/json", "User-Agent": "AeroTrack/1.0" };
-    if (req.headers.authorization) headers["Authorization"] = req.headers.authorization;
     try {
-      console.log("Proxying OpenSky:", apiPath);
-      let apiResp;
-      if (OPENSKY_WORKER_URL) {
-        const queryIdx = apiPath.indexOf("?");
-        const pathPart = queryIdx >= 0 ? apiPath.substring(0, queryIdx) : apiPath;
-        const queryPart = queryIdx >= 0 ? apiPath.substring(queryIdx + 1) : "";
-        const workerUrl = `${OPENSKY_WORKER_URL}?path=/api/${pathPart}${queryPart ? "&query=" + encodeURIComponent(queryPart) : ""}`;
-        apiResp = await httpsRequest(workerUrl, { headers, timeout: 30000 });
-      } else {
-        apiResp = await httpsRequest(`https://${OPENSKY_API_HOST}/api/${apiPath}`, { headers, timeout: 30000 });
+      if (apiPath.startsWith("flights/aircraft")) {
+        const urlObj = new URL(req.url, "http://localhost");
+        const icao24 = urlObj.pathname.split("/").pop();
+        const apiResp = await httpsRequest(`https://${AIRPLANE_HOST}/v2/icao/${icao24}`, { timeout: 15000 });
+        cors(res);
+        res.writeHead(apiResp.status, { "Content-Type": "application/json" });
+        return res.end(apiResp.body);
       }
-      console.log("OpenSky response:", apiResp.status, "bytes:", apiResp.body.length);
-      cors(res);
-      res.writeHead(apiResp.status, { "Content-Type": apiResp.headers["content-type"] || "application/json" });
-      return res.end(apiResp.body);
+      return json(res, 404, { error: "Endpoint not supported" });
     } catch (err) {
-      console.error("OpenSky proxy error:", err.message);
-      return json(res, 502, { error: "OpenSky API unreachable: " + err.message });
+      return json(res, 502, { error: "API error: " + err.message });
     }
   }
 
