@@ -170,8 +170,8 @@ function mergeAircraftFromResponse(body) {
   }
 }
 
-const CONCURRENCY = 5;
-const DELAY_BETWEEN_BATCHES = 1100;
+const CONCURRENCY = 3;
+const DELAY_BETWEEN_BATCHES = 2000;
 
 async function fetchTile(tile) {
   const url = `https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`;
