@@ -730,8 +730,8 @@ const DashboardView: React.FC<Props> = (_props) => {
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25, mt: -0.25, backgroundColor: 'transparent' }}>
                   <Typography sx={{ fontFamily: MONO, fontSize: '1.05rem', fontWeight: 700, color: DARK }}>{callsign}</Typography>
                   <Typography sx={{ fontFamily: MONO, fontSize: '1.05rem', color: MUTED }}>
-                    {sv.origin_country || ''} &middot; {altFt > 0 ? `${altFt.toLocaleString()} ft` : 'GND'}
-                    {sv.velocity ? ` &middot; ${Math.round(sv.velocity * 1.94384)} kts` : ''}
+                    {sv.origin_country || ''} · {altFt > 0 ? `${altFt.toLocaleString()} ft` : 'GND'}
+                    {sv.velocity ? ` · ${Math.round(sv.velocity * 1.94384)} kts` : ''}
                   </Typography>
                 </Box>
               </Box>

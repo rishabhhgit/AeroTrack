@@ -128,6 +128,28 @@ async function fetchTilesBatched(tiles, batchSize = 5, delayMs = 1100) {
   return allAircraft;
 }
 
+function getCountryFromHex(hex) {
+  if (!hex || hex.length < 2) return "Unknown";
+  const p = parseInt(hex.substring(0, 2), 16);
+  if (p <= 0x0F) return "Reserved";
+  if (p <= 0x1F) return "Africa";
+  if (p <= 0x2F) return "Africa";
+  if (p <= 0x3F) return "Germany";
+  if (p <= 0x4F) return "United Kingdom";
+  if (p <= 0x5F) return "United States";
+  if (p <= 0x6F) return "South America";
+  if (p <= 0x7F) return "Europe";
+  if (p <= 0x8F) return "Oceania";
+  if (p <= 0x9F) return "Unknown";
+  if (p <= 0xAF) return "Asia";
+  if (p <= 0xBF) return "China";
+  if (p <= 0xCF) return "Canada";
+  if (p <= 0xDF) return "Germany";
+  if (p <= 0xEF) return "Europe";
+  if (p <= 0xFF) return "France";
+  return "Unknown";
+}
+
 function convertToOpenSkyFormat(airplanesData) {
   const now = Math.floor(Date.now() / 1000);
   const states = [];
@@ -136,7 +158,7 @@ function convertToOpenSkyFormat(airplanesData) {
     states.push([
       ac.hex || null,
       (ac.flight || "").trim() || null,
-      "Unknown",
+      getCountryFromHex(ac.hex),
       ac.seen_pos != null ? Math.round(now - ac.seen_pos) : null,
       ac.seen != null ? Math.round(now - ac.seen) : now,
       ac.lon,
