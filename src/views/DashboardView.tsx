@@ -260,7 +260,7 @@ const DashboardView: React.FC<Props> = (_props) => {
   const stats = useMemo(() => {
     const all = positionedStates;
     const airborne = all.filter((s) => !s.on_ground);
-    const countries = new Set(all.map((s) => s.origin_country).filter(Boolean));
+    const countries = new Set(all.map((s) => s.origin_country).filter((c) => c && c !== 'Others' && c !== 'Unknown'));
     const onGround = all.filter((s) => s.on_ground);
 
     let totalAlt = 0; let altCount = 0; let maxAlt = 0;
@@ -274,7 +274,8 @@ const DashboardView: React.FC<Props> = (_props) => {
 
     const countryCounts = new Map<string, number>();
     for (const sv of all) {
-      const c = sv.origin_country || 'Unknown';
+      const c = sv.origin_country;
+      if (!c || c === 'Others' || c === 'Unknown') continue;
       countryCounts.set(c, (countryCounts.get(c) || 0) + 1);
     }
     let busiestAirspace = '';
@@ -324,25 +325,15 @@ const DashboardView: React.FC<Props> = (_props) => {
   const countryData = useMemo(() => {
     const map = new Map<string, number>();
     for (const sv of positionedStates) {
-      const c = sv.origin_country || 'Unknown';
+      const c = sv.origin_country;
+      if (!c || c === 'Others' || c === 'Unknown') continue;
       map.set(c, (map.get(c) || 0) + 1);
     }
     const sorted = Array.from(map.entries())
       .sort((a, b) => b[1] - a[1]);
     
-    // Take top 15 countries
     const top15 = sorted.slice(0, 15);
-    
-    // Aggregate remaining countries into "Others"
-    const othersCount = sorted.slice(15).reduce((sum, [, count]) => sum + count, 0);
-    
-    // Build final array with top 15 + Others (if there are remaining countries)
-    const result = top15.map(([name, value]) => ({ name, value }));
-    if (othersCount > 0) {
-      result.push({ name: 'Others', value: othersCount });
-    }
-    
-    return result;
+    return top15.map(([name, value]) => ({ name, value }));
   }, [positionedStates]);
 
   const altitudeDistData = useMemo(() => {
