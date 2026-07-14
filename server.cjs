@@ -1,15 +1,20 @@
 const http = require("http");
+const https = require("https");
 const fs = require("fs");
 const path = require("path");
+const dns = require("dns");
 
 process.on("uncaughtException", (err) => { console.error("UNCAUGHT:", err); });
 process.on("unhandledRejection", (err) => { console.error("UNHANDLED:", err); });
 
 setInterval(() => console.log(`HEARTBEAT ${new Date().toISOString()}`), 30000);
 
-const OPENSKY_AUTH_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token";
-const OPENSKY_API_BASE = "https://opensky-network.org/api";
-const AIRPORTDB_API_BASE = "https://airportdb.io/api/v1";
+const OPENSKY_AUTH_HOST = "auth.opensky-network.org";
+const OPENSKY_API_HOST = "opensky-network.org";
+const AIRPORTDB_HOST = "airportdb.io";
+
+dns.lookup(OPENSKY_API_HOST, (err, addr) => console.log("DNS opensky-network.org:", err ? err.message : addr));
+dns.lookup(AIRPORTDB_HOST, (err, addr) => console.log("DNS airportdb.io:", err ? err.message : addr));
 
 const CLIENT_ID = process.env.VITE_REACT_OSKY_CLIENT_ID;
 const CLIENT_SECRET = process.env.VITE_REACT_OSKY_CLIENT_SECRET;
@@ -46,17 +51,38 @@ function json(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-async function proxyFetch(url, options = {}, timeoutMs = 30000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const resp = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(timer);
-    return resp;
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
-  }
+function httpsGet(url, headers = {}, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers, timeout: timeoutMs }, (res) => {
+      let body = "";
+      res.on("data", (chunk) => body += chunk);
+      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body }));
+    });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
+  });
+}
+
+function httpsPost(url, headers, body, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request({
+      hostname: u.hostname,
+      port: u.port || 443,
+      path: u.pathname + u.search,
+      method: "POST",
+      headers,
+      timeout: timeoutMs,
+    }, (res) => {
+      let data = "";
+      res.on("data", (chunk) => data += chunk);
+      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
+    });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
+    req.write(body);
+    req.end();
+  });
 }
 
 const server = http.createServer(async (req, res) => {
@@ -72,6 +98,19 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { ok: true, distPath });
   }
 
+  if (req.url === "/test") {
+    const results = {};
+    try {
+      results.opensky = await httpsGet("https://opensky-network.org/api/states/all?limit=1", { Accept: "application/json" }, 10000);
+      results.opensky = { status: results.opensky.status, bytes: results.opensky.body.length };
+    } catch (e) { results.opensky = { error: e.message }; }
+    try {
+      results.airportdb = await httpsGet(`https://airportdb.io/api/v1/search/ICN?apiToken=${AIRPORTDB_TOKEN}`, { Accept: "application/json" }, 10000);
+      results.airportdb = { status: results.airportdb.status, bytes: results.airportdb.body.length };
+    } catch (e) { results.airportdb = { error: e.message }; }
+    return json(res, 200, results);
+  }
+
   if (req.url.startsWith("/oskytokenapi")) {
     if (!CLIENT_ID || !CLIENT_SECRET) {
       return json(res, 500, { error: "Missing credentials" });
@@ -81,17 +120,17 @@ const server = http.createServer(async (req, res) => {
     params.append("client_id", CLIENT_ID);
     params.append("client_secret", CLIENT_SECRET);
     try {
-      console.log("Fetching OpenSky token...");
-      const resp = await proxyFetch(OPENSKY_AUTH_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params,
-      }, 15000);
-      const body = await resp.text();
+      console.log("Fetching OpenSky token via https module...");
+      const resp = await httpsPost(
+        `https://${OPENSKY_AUTH_HOST}/auth/realms/opensky-network/protocol/openid-connect/token`,
+        { "Content-Type": "application/x-www-form-urlencoded" },
+        params.toString(),
+        15000
+      );
       console.log("OpenSky token response:", resp.status);
       cors(res);
       res.writeHead(resp.status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      return res.end(body);
+      return res.end(resp.body);
     } catch (err) {
       console.error("OpenSky token error:", err.message);
       return json(res, 500, { error: err.message });
@@ -100,17 +139,15 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url.startsWith("/oskyapi/")) {
     const apiPath = req.url.slice("/oskyapi/".length);
-    const url = `${OPENSKY_API_BASE}/${apiPath}`;
+    const headers = { Accept: "application/json" };
+    if (req.headers.authorization) headers["Authorization"] = req.headers.authorization;
     try {
-      const headers = { Accept: "application/json" };
-      if (req.headers.authorization) headers["Authorization"] = req.headers.authorization;
-      console.log("Proxying OpenSky:", url);
-      const resp = await proxyFetch(url, { method: "GET", headers }, 30000);
-      const body = await resp.text();
-      console.log("OpenSky response:", resp.status, "bytes:", body.length);
+      console.log("Proxying OpenSky via https module:", apiPath);
+      const resp = await httpsGet(`https://${OPENSKY_API_HOST}/api/${apiPath}`, headers, 30000);
+      console.log("OpenSky response:", resp.status, "bytes:", resp.body.length);
       cors(res);
-      res.writeHead(resp.status, { "Content-Type": resp.headers.get("content-type") || "application/json" });
-      return res.end(body);
+      res.writeHead(resp.status, { "Content-Type": resp.headers["content-type"] || "application/json" });
+      return res.end(resp.body);
     } catch (err) {
       console.error("OpenSky proxy error:", err.message);
       return json(res, 502, { error: "OpenSky API unreachable: " + err.message });
@@ -120,13 +157,15 @@ const server = http.createServer(async (req, res) => {
   if (req.url.startsWith("/airportdbapi/")) {
     const apiPath = req.url.slice("/airportdbapi/".length);
     const separator = apiPath.includes("?") ? "&" : "?";
-    const url = `${AIRPORTDB_API_BASE}/${apiPath}${separator}apiToken=${AIRPORTDB_TOKEN}`;
     try {
-      const resp = await proxyFetch(url, { method: "GET", headers: { Accept: "application/json" } }, 15000);
-      const body = await resp.text();
+      const resp = await httpsGet(
+        `https://${AIRPORTDB_HOST}/api/v1/${apiPath}${separator}apiToken=${AIRPORTDB_TOKEN}`,
+        { Accept: "application/json" },
+        15000
+      );
       cors(res);
-      res.writeHead(resp.status, { "Content-Type": resp.headers.get("content-type") || "application/json" });
-      return res.end(body);
+      res.writeHead(resp.status, { "Content-Type": resp.headers["content-type"] || "application/json" });
+      return res.end(resp.body);
     } catch (err) {
       return json(res, 502, { error: "AirportDB API unreachable: " + err.message });
     }
