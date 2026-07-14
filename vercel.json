@@ -1,0 +1,15 @@
+{
+  "rewrites": [
+    { "source": "/oskyapi/(.*)", "destination": "/api/oskyapi/$1" },
+    { "source": "/oskytokenapi", "destination": "/api/oskytokenapi" },
+    { "source": "/airportdbapi/(.*)", "destination": "/api/airportdbapi/$1" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache" }
+      ]
+    }
+  ]
+}
