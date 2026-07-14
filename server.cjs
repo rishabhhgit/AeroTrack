@@ -62,15 +62,31 @@ function httpsRequest(url, options = {}) {
   });
 }
 
-function bboxToCenterRadius(lamin, lomin, lamax, lomax) {
-  const centerLat = (lamin + lamax) / 2;
-  const centerLon = (lomin + lomax) / 2;
-  const latSpan = Math.abs(lamax - lamin) / 2;
-  const lonSpan = Math.abs(lomax - lomin) / 2;
-  const radiusNm = Math.sqrt(
-    Math.pow(latSpan * 60, 2) + Math.pow(lonSpan * 60 * Math.cos(centerLat * Math.PI / 180), 2)
-  ) + 10;
-  return { centerLat, centerLon, radiusNm: Math.min(Math.round(radiusNm), 250) };
+function bboxToTiles(lamin, lomin, lamax, lomax, maxRadiusNm = 240) {
+  const latSpanNm = (lamax - lamin) * 60;
+  const lonSpanNm = (lomax - lomin) * 60 * Math.cos(((lamin + lamax) / 2) * Math.PI / 180);
+
+  if (latSpanNm <= maxRadiusNm * 2 && lonSpanNm <= maxRadiusNm * 2) {
+    const r = Math.min(Math.max(latSpanNm, lonSpanNm) / 2 + 10, maxRadiusNm);
+    return [{ lat: (lamin + lamax) / 2, lon: (lomin + lomax) / 2, radius: r }];
+  }
+
+  const latSteps = Math.ceil(latSpanNm / (maxRadiusNm * 1.8));
+  const lonSteps = Math.ceil(lonSpanNm / (maxRadiusNm * 1.8));
+  const tiles = [];
+  const stepLat = (lamax - lamin) / latSteps;
+  const stepLon = (lomax - lomin) / lonSteps;
+
+  for (let i = 0; i < latSteps && tiles.length < 12; i++) {
+    for (let j = 0; j < lonSteps && tiles.length < 12; j++) {
+      tiles.push({
+        lat: lamin + stepLat * (i + 0.5),
+        lon: lomin + stepLon * (j + 0.5),
+        radius: maxRadiusNm
+      });
+    }
+  }
+  return tiles.length > 0 ? tiles : [{ lat: (lamin + lamax) / 2, lon: (lomin + lomax) / 2, radius: maxRadiusNm }];
 }
 
 function convertToOpenSkyFormat(airplanesData) {
@@ -140,15 +156,35 @@ const server = http.createServer(async (req, res) => {
       const lomin = parseFloat(urlObj.searchParams.get("lomin") || "0");
       const lamax = parseFloat(urlObj.searchParams.get("lamax") || "55");
       const lomax = parseFloat(urlObj.searchParams.get("lomax") || "15");
-      const { centerLat, centerLon, radiusNm } = bboxToCenterRadius(lamin, lomin, lamax, lomax);
-      console.log(`Proxying: bbox(${lamin},${lomin},${lamax},${lomax}) -> center(${centerLat.toFixed(2)},${centerLon.toFixed(2)}) r=${radiusNm}nm`);
-      const apiResp = await httpsRequest(`https://${AIRPLANE_HOST}/v2/point/${centerLat}/${centerLon}/${radiusNm}`, { timeout: 25000 });
-      console.log("airplanes.live response:", apiResp.status, "bytes:", apiResp.body.length);
-      const airplanesData = JSON.parse(apiResp.body);
-      const openSkyData = convertToOpenSkyFormat(airplanesData);
+      const tiles = bboxToTiles(lamin, lomin, lamax, lomax);
+      console.log(`bbox(${lamin.toFixed(1)},${lomin.toFixed(1)},${lamax.toFixed(1)},${lomax.toFixed(1)}) -> ${tiles.length} tile(s)`);
+      const allStates = [];
+      const seenHex = new Set();
+      const promises = tiles.map((tile, i) =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            httpsRequest(`https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`, { timeout: 20000 })
+              .then((r) => {
+                const data = JSON.parse(r.body);
+                const converted = convertToOpenSkyFormat(data);
+                for (const sv of converted.states) {
+                  if (sv[0] && !seenHex.has(sv[0])) {
+                    seenHex.add(sv[0]);
+                    allStates.push(sv);
+                  }
+                }
+                resolve();
+              })
+              .catch((e) => { console.error(`Tile ${i} error:`, e.message); resolve(); });
+          }, i * 1100);
+        })
+      );
+      await Promise.all(promises);
+      console.log(`Total unique aircraft: ${allStates.length}`);
+      const now = Math.floor(Date.now() / 1000);
       cors(res);
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(openSkyData));
+      return res.end(JSON.stringify({ time: now, states: allStates }));
     } catch (err) {
       console.error("airplanes.live proxy error:", err.message);
       return json(res, 502, { error: "airplanes.live API error: " + err.message });
