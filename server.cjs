@@ -53,8 +53,8 @@ app.get("/oskytokenapi", async (req, res) => {
   }
 });
 
-app.get("/oskyapi/{*path}", async (req, res) => {
-  const apiPath = req.params.path;
+app.get("/oskyapi/*", async (req, res) => {
+  const apiPath = req.params[0];
   const qs = new URL(req.url, "http://localhost").search;
   const url = `${OPENSKY_API_BASE}/${apiPath}${qs}`;
 
@@ -72,8 +72,8 @@ app.get("/oskyapi/{*path}", async (req, res) => {
   }
 });
 
-app.get("/airportdbapi/{*path}", async (req, res) => {
-  const apiPath = req.params.path;
+app.get("/airportdbapi/*", async (req, res) => {
+  const apiPath = req.params[0];
   const qs = new URL(req.url, "http://localhost").search;
   const separator = apiPath.includes("?") ? "&" : "?";
   const url = `${AIRPORTDB_API_BASE}/${apiPath}${qs}${qs ? "&" : "?"}apiToken=${AIRPORTDB_TOKEN}`;
@@ -93,7 +93,7 @@ app.get("/airportdbapi/{*path}", async (req, res) => {
 
 const distPath = __dirname;
 app.use(express.static(distPath));
-app.get("/{*splat}", (req, res) => {
+app.get("*", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 
