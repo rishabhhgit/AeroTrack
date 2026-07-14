@@ -70,13 +70,19 @@ app.get("/airportdbapi/*", async (req, res) => {
   }
 });
 
-const distPath = path.join(__dirname, "dist");
+const fs = require("fs");
+let distPath = path.join(__dirname, "dist");
+if (!fs.existsSync(distPath)) {
+  distPath = __dirname;
+}
+console.log(`Serving static from: ${distPath}`);
 app.use(express.static(distPath));
 app.get("*", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 
 const PORT = process.env.PORT || 3000;
+console.log(`Attempting to listen on ${PORT}, cwd: ${__dirname}`);
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`AeroTrack running on port ${PORT}`);
 });
