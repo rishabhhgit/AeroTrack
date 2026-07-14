@@ -9,7 +9,7 @@ process.on("unhandledRejection", (err) => { console.error("UNHANDLED:", err); })
 const AIRPLANE_HOST = "api.airplanes.live";
 const AIRPORTDB_HOST = "airportdb.io";
 const AIRPORTDB_TOKEN = process.env.VITE_AIRPORTDB_TOKEN;
-const RATE_LIMIT_MS = 1050;
+const RATE_LIMIT_MS = 1020;
 const STALE_TIMEOUT_MS = 20 * 60 * 1000;
 const REFRESH_INTERVAL_MS = 8 * 60 * 1000;
 
@@ -105,8 +105,8 @@ function getCountryFromHex(hex) {
 function generateGlobalGrid() {
   const tiles = [];
   const RADIUS = 240;
-  const latStepDeg = (RADIUS * 2) / 60 * 1.0;
-  const lonStepDeg = (RADIUS * 2) / 60 * 1.0;
+  const latStepDeg = (RADIUS * 2) / 60 * 0.8;
+  const lonStepDeg = (RADIUS * 2) / 60 * 0.8;
 
   for (let lat = -80; lat < 80; lat += latStepDeg) {
     for (let lon = -180; lon < 180; lon += lonStepDeg) {
