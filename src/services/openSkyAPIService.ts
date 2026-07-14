@@ -335,9 +335,7 @@ export class OpenSkyAPIService extends Service implements IOpenSkyAPIService {
 
   private async fetchToken(): Promise<string> {
 
-    const PROXY_BASE = import.meta.env.VITE_PROXY_URL || '';
-
-    const response = await fetch(`${PROXY_BASE}/token?nocache=${Date.now()}`, { method: "GET" });
+    const response = await fetch(`/oskytokenapi?nocache=${Date.now()}`, { method: "GET" });
 
     if (!response.ok)
       throw new Error("Proxy OAuth2 token request failed: " + response.statusText);
