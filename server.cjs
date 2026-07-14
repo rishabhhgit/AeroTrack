@@ -105,8 +105,8 @@ function getCountryFromHex(hex) {
 function generateGlobalGrid() {
   const tiles = [];
   const RADIUS = 240;
-  const latStepDeg = (RADIUS * 2) / 60 * 1.4;
-  const lonStepDeg = (RADIUS * 2) / 60 * 1.4;
+  const latStepDeg = (RADIUS * 2) / 60 * 1.0;
+  const lonStepDeg = (RADIUS * 2) / 60 * 1.0;
 
   for (let lat = -80; lat < 80; lat += latStepDeg) {
     for (let lon = -180; lon < 180; lon += lonStepDeg) {
