@@ -176,26 +176,24 @@ const server = http.createServer(async (req, res) => {
       console.log(`bbox(${lamin.toFixed(1)},${lomin.toFixed(1)},${lamax.toFixed(1)},${lomax.toFixed(1)}) -> ${tiles.length} tile(s)`);
       const allStates = [];
       const seenHex = new Set();
-      const promises = tiles.map((tile, i) =>
-        new Promise((resolve) => {
-          setTimeout(() => {
-            httpsRequest(`https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`, { timeout: 20000 })
-              .then((r) => {
-                const data = JSON.parse(r.body);
-                const converted = convertToOpenSkyFormat(data);
-                for (const sv of converted.states) {
-                  if (sv[0] && !seenHex.has(sv[0])) {
-                    seenHex.add(sv[0]);
-                    allStates.push(sv);
-                  }
-                }
-                resolve();
-              })
-              .catch((e) => { console.error(`Tile ${i} error:`, e.message); resolve(); });
-          }, i * 1100);
-        })
+      const results = await Promise.allSettled(
+        tiles.map((tile) =>
+          httpsRequest(`https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`, { timeout: 20000 })
+        )
       );
-      await Promise.all(promises);
+      for (const r of results) {
+        if (r.status !== "fulfilled") continue;
+        try {
+          const data = JSON.parse(r.value.body);
+          const converted = convertToOpenSkyFormat(data);
+          for (const sv of converted.states) {
+            if (sv[0] && !seenHex.has(sv[0])) {
+              seenHex.add(sv[0]);
+              allStates.push(sv);
+            }
+          }
+        } catch (e) { console.error("Parse error:", e.message); }
+      }
       console.log(`Total unique aircraft: ${allStates.length}`);
       const now = Math.floor(Date.now() / 1000);
       cors(res);
