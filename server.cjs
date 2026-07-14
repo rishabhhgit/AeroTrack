@@ -62,23 +62,39 @@ function httpsRequest(url, options = {}) {
   });
 }
 
-function bboxToTiles(lamin, lomin, lamax, lomax, maxRadiusNm = 240) {
+function bboxToTiles(lamin, lomin, lamax, lomax, maxRadiusNm = 240, maxTiles = 12) {
   const latSpanNm = (lamax - lamin) * 60;
+  const lonCenter = (lomin + lomax) / 2;
   const lonSpanNm = (lomax - lomin) * 60 * Math.cos(((lamin + lamax) / 2) * Math.PI / 180);
 
   if (latSpanNm <= maxRadiusNm * 2 && lonSpanNm <= maxRadiusNm * 2) {
     const r = Math.min(Math.max(latSpanNm, lonSpanNm) / 2 + 10, maxRadiusNm);
-    return [{ lat: (lamin + lamax) / 2, lon: (lomin + lomax) / 2, radius: r }];
+    return [{ lat: (lamin + lamax) / 2, lon: lonCenter, radius: Math.max(r, 50) }];
   }
 
-  const latSteps = Math.ceil(latSpanNm / (maxRadiusNm * 1.8));
-  const lonSteps = Math.ceil(lonSpanNm / (maxRadiusNm * 1.8));
-  const tiles = [];
+  const latStepsNeeded = Math.ceil(latSpanNm / (maxRadiusNm * 1.6));
+  const lonStepsNeeded = Math.ceil(lonSpanNm / (maxRadiusNm * 1.6));
+  const totalGrid = latStepsNeeded * lonStepsNeeded;
+
+  let latSteps, lonSteps;
+  if (totalGrid <= maxTiles) {
+    latSteps = latStepsNeeded;
+    lonSteps = lonStepsNeeded;
+  } else {
+    const ratio = Math.sqrt(maxTiles / totalGrid);
+    latSteps = Math.max(1, Math.round(latStepsNeeded * ratio));
+    lonSteps = Math.max(1, Math.round(lonStepsNeeded * ratio));
+    while (latSteps * lonSteps < maxTiles && lonSteps < lonStepsNeeded) lonSteps++;
+    while (latSteps * lonSteps < maxTiles && latSteps < latStepsNeeded) latSteps++;
+    while (latSteps * lonSteps > maxTiles && lonSteps > 1) lonSteps--;
+  }
+
   const stepLat = (lamax - lamin) / latSteps;
   const stepLon = (lomax - lomin) / lonSteps;
+  const tiles = [];
 
-  for (let i = 0; i < latSteps && tiles.length < 12; i++) {
-    for (let j = 0; j < lonSteps && tiles.length < 12; j++) {
+  for (let i = 0; i < latSteps; i++) {
+    for (let j = 0; j < lonSteps; j++) {
       tiles.push({
         lat: lamin + stepLat * (i + 0.5),
         lon: lomin + stepLon * (j + 0.5),
@@ -86,7 +102,7 @@ function bboxToTiles(lamin, lomin, lamax, lomax, maxRadiusNm = 240) {
       });
     }
   }
-  return tiles.length > 0 ? tiles : [{ lat: (lamin + lamax) / 2, lon: (lomin + lomax) / 2, radius: maxRadiusNm }];
+  return tiles.length > 0 ? tiles : [{ lat: (lamin + lamax) / 2, lon: lonCenter, radius: maxRadiusNm }];
 }
 
 function convertToOpenSkyFormat(airplanesData) {

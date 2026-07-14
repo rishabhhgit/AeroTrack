@@ -190,6 +190,20 @@ const DashboardView: React.FC<Props> = (_props) => {
       });
       map.on('mouseenter', 'dash-ac-layer', () => { map.getCanvas().style.cursor = 'pointer'; });
       map.on('mouseleave', 'dash-ac-layer', () => { map.getCanvas().style.cursor = ''; });
+
+      const updateGeoBounds = () => {
+        const b = map.getBounds();
+        if (b && openSkyRef.current) {
+          openSkyRef.current.geoBounds = {
+            southernLatitude: Math.max(b.getSouth(), -85),
+            northernLatitude: Math.min(b.getNorth(), 85),
+            westernLongitude: b.getWest(),
+            easternLongitude: b.getEast(),
+          };
+        }
+      };
+      updateGeoBounds();
+      map.on('moveend', updateGeoBounds);
     });
     mapRef.current = map;
     return () => { map.remove(); mapRef.current = null; mapLoadedRef.current = false; };
