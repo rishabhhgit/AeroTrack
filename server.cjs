@@ -20,56 +20,81 @@ console.log("Env:", JSON.stringify({
   clientSecret: CLIENT_SECRET ? "SET" : "MISSING",
   airportDbToken: AIRPORTDB_TOKEN ? "SET" : "MISSING",
   port: process.env.PORT,
-  allEnvKeys: Object.keys(process.env).filter(k => k.startsWith("VITE") || k === "PORT" || k.startsWith("RAILWAY")),
 }));
 
 let distPath = path.join(__dirname, "dist");
 if (!fs.existsSync(distPath)) {
   distPath = __dirname;
 }
-console.log("__dirname:", __dirname, "distPath:", distPath);
 
 let indexHtml;
 try {
   indexHtml = fs.readFileSync(path.join(distPath, "index.html"), "utf-8");
-  console.log("index.html loaded, length:", indexHtml.length);
 } catch (e) {
-  console.error("FAILED to load index.html:", e.message);
   indexHtml = "<h1>AeroTrack - index.html not found</h1>";
 }
 
+function cors(res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+function json(res, status, data) {
+  cors(res);
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(data));
+}
+
+async function proxyFetch(url, options = {}, timeoutMs = 30000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timer);
+    return resp;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
 const server = http.createServer(async (req, res) => {
+  if (req.method === "OPTIONS") {
+    cors(res);
+    res.writeHead(204);
+    return res.end();
+  }
+
   console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
 
   if (req.url === "/health") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, distPath }));
+    return json(res, 200, { ok: true, distPath });
   }
 
-  if (req.url === "/oskytokenapi") {
+  if (req.url.startsWith("/oskytokenapi")) {
     if (!CLIENT_ID || !CLIENT_SECRET) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: "Missing credentials" }));
+      return json(res, 500, { error: "Missing credentials" });
     }
     const params = new URLSearchParams();
     params.append("grant_type", "client_credentials");
     params.append("client_id", CLIENT_ID);
     params.append("client_secret", CLIENT_SECRET);
     try {
-      const resp = await fetch(OPENSKY_AUTH_URL, {
+      console.log("Fetching OpenSky token...");
+      const resp = await proxyFetch(OPENSKY_AUTH_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: params,
-      });
+      }, 15000);
       const body = await resp.text();
-      res.writeHead(resp.status, {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store",
-      });
+      console.log("OpenSky token response:", resp.status);
+      cors(res);
+      res.writeHead(resp.status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       return res.end(body);
     } catch (err) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: err.message }));
+      console.error("OpenSky token error:", err.message);
+      return json(res, 500, { error: err.message });
     }
   }
 
@@ -79,13 +104,16 @@ const server = http.createServer(async (req, res) => {
     try {
       const headers = { Accept: "application/json" };
       if (req.headers.authorization) headers["Authorization"] = req.headers.authorization;
-      const resp = await fetch(url, { method: "GET", headers });
+      console.log("Proxying OpenSky:", url);
+      const resp = await proxyFetch(url, { method: "GET", headers }, 30000);
       const body = await resp.text();
+      console.log("OpenSky response:", resp.status, "bytes:", body.length);
+      cors(res);
       res.writeHead(resp.status, { "Content-Type": resp.headers.get("content-type") || "application/json" });
       return res.end(body);
     } catch (err) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: err.message }));
+      console.error("OpenSky proxy error:", err.message);
+      return json(res, 502, { error: "OpenSky API unreachable: " + err.message });
     }
   }
 
@@ -94,13 +122,13 @@ const server = http.createServer(async (req, res) => {
     const separator = apiPath.includes("?") ? "&" : "?";
     const url = `${AIRPORTDB_API_BASE}/${apiPath}${separator}apiToken=${AIRPORTDB_TOKEN}`;
     try {
-      const resp = await fetch(url, { method: "GET", headers: { Accept: "application/json" } });
+      const resp = await proxyFetch(url, { method: "GET", headers: { Accept: "application/json" } }, 15000);
       const body = await resp.text();
+      cors(res);
       res.writeHead(resp.status, { "Content-Type": resp.headers.get("content-type") || "application/json" });
       return res.end(body);
     } catch (err) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ error: err.message }));
+      return json(res, 502, { error: "AirportDB API unreachable: " + err.message });
     }
   }
 
@@ -119,17 +147,13 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
       return res.end(content);
     }
-  } catch (e) {
-    // fall through
-  }
+  } catch (e) {}
 
   res.writeHead(200, { "Content-Type": "text/html" });
   res.end(indexHtml);
 });
 
 const PORT = process.env.PORT || 3000;
-console.log("PORT env:", process.env.PORT, "→ using:", PORT);
-console.log(`About to listen on ${PORT}...`);
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`LISTENING on 0.0.0.0:${PORT}`);
 });
