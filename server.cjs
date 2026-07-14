@@ -10,8 +10,8 @@ const AIRPLANE_HOST = "api.airplanes.live";
 const AIRPORTDB_HOST = "airportdb.io";
 const AIRPORTDB_TOKEN = process.env.VITE_AIRPORTDB_TOKEN;
 const RATE_LIMIT_MS = 1050;
-const STALE_TIMEOUT_MS = 5 * 60 * 1000;
-const SCAN_INTERVAL_MS = 4 * 60 * 1000;
+const STALE_TIMEOUT_MS = 20 * 60 * 1000;
+const REFRESH_INTERVAL_MS = 8 * 60 * 1000;
 
 let distPath = path.join(__dirname, "dist");
 if (!fs.existsSync(distPath)) distPath = __dirname;
@@ -24,10 +24,9 @@ try {
 }
 
 const aircraftCache = new Map();
-let scanInProgress = false;
-let scanGeneration = 0;
-let lastViewport = null;
-let lastScanTime = 0;
+let globalScanRunning = false;
+let globalScanComplete = false;
+let lastRefreshTime = 0;
 
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -103,63 +102,17 @@ function getCountryFromHex(hex) {
   return "Unknown";
 }
 
-function acToStateVector(ac) {
-  const now = Math.floor(Date.now() / 1000);
-  return [
-    ac.hex || null,
-    (ac.flight || "").trim() || null,
-    getCountryFromHex(ac.hex),
-    ac.seen_pos != null ? Math.round(now - ac.seen_pos) : null,
-    ac.seen != null ? Math.round(now - ac.seen) : now,
-    ac.lon,
-    ac.lat,
-    ac.alt_baro != null && ac.alt_baro !== "ground" ? ac.alt_baro * 0.3048 : null,
-    ac.alt_baro === "ground",
-    ac.gs != null ? ac.gs * 0.514444 : null,
-    ac.track != null ? ac.track : null,
-    ac.baro_rate != null ? ac.baro_rate * 0.00508 : null,
-    null,
-    ac.alt_geom != null && ac.alt_geom !== "ground" ? ac.alt_geom * 0.3048 : null,
-    ac.squawk || null,
-    ac.spi === 1,
-    0,
-    0,
-  ];
-}
-
 function generateGlobalGrid() {
   const tiles = [];
   const RADIUS = 240;
-  const latMin = -80, latMax = 80, lonMin = -180, lonMax = 180;
   const latStepDeg = (RADIUS * 2) / 60 * 1.4;
   const lonStepDeg = (RADIUS * 2) / 60 * 1.4;
 
-  for (let lat = latMin; lat < latMax; lat += latStepDeg) {
-    for (let lon = lonMin; lon < lonMax; lon += lonStepDeg) {
-      const centerLat = Math.min(lat + latStepDeg / 2, latMax);
-      const centerLon = lon + lonStepDeg / 2;
-      tiles.push({ lat: centerLat, lon: centerLon > 180 ? centerLon - 360 : centerLon, radius: RADIUS });
-    }
-  }
-  return tiles;
-}
-
-function generateViewportTiles(lamin, lomin, lamax, lomax) {
-  const tiles = [];
-  const RADIUS = 240;
-  const latSpanNm = (lamax - lamin) * 60;
-  const lonSpanNm = (lomax - lomin) * 60 * Math.cos(((lamin + lamax) / 2) * Math.PI / 180);
-  const stepNm = RADIUS * 1.5;
-  const latSteps = Math.max(1, Math.ceil(latSpanNm / stepNm));
-  const lonSteps = Math.max(1, Math.ceil(lonSpanNm / stepNm));
-  const stepLat = (lamax - lamin) / latSteps;
-  const stepLon = (lomax - lomin) / lonSteps;
-
-  for (let i = 0; i < latSteps; i++) {
-    for (let j = 0; j < lonSteps; j++) {
+  for (let lat = -80; lat < 80; lat += latStepDeg) {
+    for (let lon = -180; lon < 180; lon += lonStepDeg) {
       tiles.push({
-        lat: lamin + stepLat * (i + 0.5),
-        lon: lomin + stepLon * (j + 0.5),
+        lat: Math.min(lat + latStepDeg / 2, 80),
+        lon: lon + lonStepDeg / 2 > 180 ? lon + lonStepDeg / 2 - 360 : lon + lonStepDeg / 2,
         radius: RADIUS,
       });
     }
@@ -217,19 +170,16 @@ async function fetchTile(tile) {
   return 0;
 }
 
-async function runScan(tiles, generation) {
-  scanInProgress = true;
-  let totalFetched = 0;
+async function runGlobalScan() {
+  if (globalScanRunning) return;
+  globalScanRunning = true;
+  const tiles = generateGlobalGrid();
   const start = Date.now();
+  console.log(`Starting global scan: ${tiles.length} tiles`);
 
   for (let i = 0; i < tiles.length; i++) {
-    if (generation !== scanGeneration) {
-      console.log(`Scan generation changed, aborting`);
-      break;
-    }
     const reqStart = Date.now();
-    const added = await fetchTile(tiles[i]);
-    totalFetched += added;
+    await fetchTile(tiles[i]);
 
     if ((i + 1) % 50 === 0) {
       console.log(`Scan progress: ${i + 1}/${tiles.length} tiles, cache: ${aircraftCache.size}`);
@@ -242,12 +192,14 @@ async function runScan(tiles, generation) {
   }
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-  console.log(`Scan complete: ${tiles.length} tiles in ${elapsed}s, ${totalFetched} aircraft processed, cache: ${aircraftCache.size}`);
-  lastScanTime = Date.now();
-  scanInProgress = false;
+  console.log(`Global scan complete: ${tiles.length} tiles in ${elapsed}s, cache: ${aircraftCache.size}`);
+  globalScanRunning = false;
+  globalScanComplete = true;
+  lastRefreshTime = Date.now();
 }
 
 function pruneStale() {
+  if (!globalScanComplete) return;
   const now = Date.now();
   let pruned = 0;
   for (const [hex, ac] of aircraftCache) {
@@ -259,48 +211,30 @@ function pruneStale() {
   if (pruned > 0) console.log(`Pruned ${pruned} stale aircraft, cache: ${aircraftCache.size}`);
 }
 
-function startGlobalScan() {
-  scanGeneration++;
-  const tiles = generateGlobalGrid();
-  console.log(`Starting global scan: ${tiles.length} tiles`);
-  runScan(tiles, scanGeneration);
-}
-
-function startViewportScan(lamin, lomin, lamax, lomax) {
-  if (scanInProgress) return;
-  scanGeneration++;
-  const tiles = generateViewportTiles(lamin, lomin, lamax, lomax);
-  lastViewport = { lamin, lomin, lamax, lomax };
-  console.log(`Starting viewport scan: ${tiles.length} tiles for bbox(${lamin.toFixed(1)},${lomin.toFixed(1)},${lamax.toFixed(1)},${lomax.toFixed(1)})`);
-  runScan(tiles, scanGeneration);
-}
-
-function getCacheAsStates(lamin, lomin, lamax, lomax) {
+function getAllCachedStates() {
   const states = [];
   const now = Math.floor(Date.now() / 1000);
   for (const [hex, ac] of aircraftCache) {
-    if (ac.lat >= lamin && ac.lat <= lamax && ac.lon >= lomin && ac.lon <= lomax) {
-      states.push([
-        ac.hex,
-        ac.flight || null,
-        getCountryFromHex(ac.hex),
-        ac.seen_pos != null ? Math.round(now - ac.seen_pos) : null,
-        ac.seen != null ? Math.round(now - ac.seen) : now,
-        ac.lon,
-        ac.lat,
-        ac.alt_baro != null && ac.alt_baro !== "ground" ? ac.alt_baro * 0.3048 : null,
-        ac.alt_baro === "ground",
-        ac.gs != null ? ac.gs * 0.514444 : null,
-        ac.track != null ? ac.track : null,
-        ac.baro_rate != null ? ac.baro_rate * 0.00508 : null,
-        null,
-        ac.alt_geom != null && ac.alt_geom !== "ground" ? ac.alt_geom * 0.3048 : null,
-        ac.squawk || null,
-        ac.spi === 1,
-        0,
-        0,
-      ]);
-    }
+    states.push([
+      ac.hex,
+      ac.flight || null,
+      getCountryFromHex(ac.hex),
+      ac.seen_pos != null ? Math.round(now - ac.seen_pos) : null,
+      ac.seen != null ? Math.round(now - ac.seen) : now,
+      ac.lon,
+      ac.lat,
+      ac.alt_baro != null && ac.alt_baro !== "ground" ? ac.alt_baro * 0.3048 : null,
+      ac.alt_baro === "ground",
+      ac.gs != null ? ac.gs * 0.514444 : null,
+      ac.track != null ? ac.track : null,
+      ac.baro_rate != null ? ac.baro_rate * 0.00508 : null,
+      null,
+      ac.alt_geom != null && ac.alt_geom !== "ground" ? ac.alt_geom * 0.3048 : null,
+      ac.squawk || null,
+      ac.spi === 1,
+      0,
+      0,
+    ]);
   }
   return states;
 }
@@ -316,8 +250,9 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, {
       ok: true,
       cacheSize: aircraftCache.size,
-      scanInProgress,
-      lastScanTime: lastScanTime ? new Date(lastScanTime).toISOString() : null,
+      globalScanRunning,
+      globalScanComplete,
+      lastRefresh: lastRefreshTime ? new Date(lastRefreshTime).toISOString() : null,
     });
   }
 
@@ -341,28 +276,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url.startsWith("/oskyapi/states/all")) {
     try {
-      const urlObj = new URL(req.url, "http://localhost");
-      const lamin = parseFloat(urlObj.searchParams.get("lamin") || "-85");
-      const lomin = parseFloat(urlObj.searchParams.get("lomin") || "-180");
-      const lamax = parseFloat(urlObj.searchParams.get("lamax") || "85");
-      const lomax = parseFloat(urlObj.searchParams.get("lomax") || "180");
-
-      if (aircraftCache.size === 0) {
-        if (!scanInProgress) startGlobalScan();
-        return json(res, 200, { time: Math.floor(Date.now() / 1000), states: [] });
-      }
-
-      const states = getCacheAsStates(lamin, lomin, lamax, lomax);
-      console.log(`Cache hit: ${aircraftCache.size} cached, ${states.length} in viewport`);
-
+      const states = getAllCachedStates();
       const now = Math.floor(Date.now() / 1000);
       cors(res);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ time: now, states }));
-
-      if (!scanInProgress && (Date.now() - lastScanTime > SCAN_INTERVAL_MS || !lastViewport)) {
-        startViewportScan(lamin, lomin, lamax, lomax);
-      }
     } catch (err) {
       console.error("States error:", err.message);
       return json(res, 502, { error: err.message });
@@ -425,7 +343,14 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`LISTENING on 0.0.0.0:${PORT}`);
   setInterval(pruneStale, 60000);
-  startGlobalScan();
+  runGlobalScan().then(() => {
+    setInterval(async () => {
+      if (!globalScanRunning) {
+        console.log(`Starting periodic refresh`);
+        await runGlobalScan();
+      }
+    }, REFRESH_INTERVAL_MS);
+  });
 });
 server.on("error", (err) => {
   console.error("SERVER ERROR:", err);
