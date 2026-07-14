@@ -35,11 +35,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   params.append('client_secret', clientSecret);
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
     const tokenResp = await fetch(TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
+      signal: controller.signal,
     });
+
+    clearTimeout(timeout);
 
     if (!tokenResp.ok) {
       const errorText = await tokenResp.text();
