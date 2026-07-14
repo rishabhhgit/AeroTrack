@@ -20,12 +20,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const clientSecret = process.env.VITE_REACT_OSKY_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    res.status(500).json({
-      error: 'Client ID/Secret is missing!',
-      hasClientId: !!clientId,
-      hasClientSecret: !!clientSecret,
-      envKeys: Object.keys(process.env).filter(k => k.includes('OSKY') || k.includes('AIRPORT') || k.includes('VITE'))
-    });
+    res.status(500).json({ error: 'Client ID/Secret is missing!' });
     return;
   }
 
@@ -35,17 +30,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   params.append('client_secret', clientSecret);
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-
     const tokenResp = await fetch(TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: params,
-      signal: controller.signal,
     });
-
-    clearTimeout(timeout);
 
     if (!tokenResp.ok) {
       const errorText = await tokenResp.text();
@@ -66,12 +55,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (err) {
     const e = err as any;
-    res.status(500).json({
-      error: e.message,
-      code: e.code,
-      type: e.type,
-      cause: e.cause?.message || null,
-      name: e.name
-    });
+    res.status(500).json({ error: e.message, code: e.code });
   }
 }

@@ -21,11 +21,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const url = `${OPENSKY_BASE}/${path}${queryString ? '?' + queryString : ''}`;
 
   try {
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+    };
+
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
     const upstream = await fetch(url, {
       method: req.method,
-      headers: {
-        'Accept': 'application/json',
-      },
+      headers,
     });
 
     const contentType = upstream.headers.get('content-type') || 'application/json';

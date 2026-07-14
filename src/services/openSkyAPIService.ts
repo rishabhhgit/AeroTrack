@@ -335,10 +335,21 @@ export class OpenSkyAPIService extends Service implements IOpenSkyAPIService {
 
   private async fetchToken(): Promise<string> {
 
-    const response = await fetch(`/oskytokenapi?nocache=${Date.now()}`, { method: "GET" });
+    const TOKEN_URL = "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token";
+
+    const params = new URLSearchParams();
+    params.append("grant_type", "client_credentials");
+    params.append("client_id", this.clientId || "");
+    params.append("client_secret", this.clientSecret || "");
+
+    const response = await fetch(TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+    });
 
     if (!response.ok)
-      throw new Error("Proxy OAuth2 token request failed: " + response.statusText);
+      throw new Error("OAuth2 token request failed: " + response.statusText);
 
     const data = await response.json();
 
@@ -346,7 +357,7 @@ export class OpenSkyAPIService extends Service implements IOpenSkyAPIService {
       throw new Error("Token response is missing access_token or expires_in.");
 
     this.accessToken = data.access_token;
-    this.expiresAt = Date.now() + Math.max(0, data.expires_in - 60) * 1000; // 1 minute before expiration
+    this.expiresAt = Date.now() + Math.max(0, data.expires_in - 60) * 1000;
 
     return data.access_token as string;
   };
