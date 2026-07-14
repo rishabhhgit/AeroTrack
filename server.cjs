@@ -6,16 +6,12 @@ const path = require("path");
 process.on("uncaughtException", (err) => { console.error("UNCAUGHT:", err); });
 process.on("unhandledRejection", (err) => { console.error("UNHANDLED:", err); });
 
-setInterval(() => console.log(`HEARTBEAT ${new Date().toISOString()}`), 30000);
-
 const AIRPLANE_HOST = "api.airplanes.live";
 const AIRPORTDB_HOST = "airportdb.io";
 const AIRPORTDB_TOKEN = process.env.VITE_AIRPORTDB_TOKEN;
-
-console.log("Env:", JSON.stringify({
-  airportDbToken: AIRPORTDB_TOKEN ? "SET" : "MISSING",
-  port: process.env.PORT,
-}));
+const RATE_LIMIT_MS = 1050;
+const STALE_TIMEOUT_MS = 5 * 60 * 1000;
+const SCAN_INTERVAL_MS = 4 * 60 * 1000;
 
 let distPath = path.join(__dirname, "dist");
 if (!fs.existsSync(distPath)) distPath = __dirname;
@@ -26,6 +22,12 @@ try {
 } catch (e) {
   indexHtml = "<h1>AeroTrack - index.html not found</h1>";
 }
+
+const aircraftCache = new Map();
+let scanInProgress = false;
+let scanGeneration = 0;
+let lastViewport = null;
+let lastScanTime = 0;
 
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -41,7 +43,7 @@ function json(res, status, data) {
 
 function httpsRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
-    const { method = "GET", headers = {}, body, timeout = 30000 } = options;
+    const { method = "GET", headers = {}, body, timeout = 15000 } = options;
     const u = new URL(url);
     const req = https.request({
       hostname: u.hostname,
@@ -60,72 +62,6 @@ function httpsRequest(url, options = {}) {
     if (body) req.write(body);
     req.end();
   });
-}
-
-function bboxToTiles(lamin, lomin, lamax, lomax, maxRadiusNm = 240, maxTiles = 48) {
-  const latSpanNm = (lamax - lamin) * 60;
-  const lonCenter = (lomin + lomax) / 2;
-  const lonSpanNm = (lomax - lomin) * 60 * Math.cos(((lamin + lamax) / 2) * Math.PI / 180);
-
-  if (latSpanNm <= maxRadiusNm * 2 && lonSpanNm <= maxRadiusNm * 2) {
-    const r = Math.min(Math.max(latSpanNm, lonSpanNm) / 2 + 10, maxRadiusNm);
-    return [{ lat: (lamin + lamax) / 2, lon: lonCenter, radius: Math.max(r, 50) }];
-  }
-
-  const latStepsNeeded = Math.ceil(latSpanNm / (maxRadiusNm * 1.4));
-  const lonStepsNeeded = Math.ceil(lonSpanNm / (maxRadiusNm * 1.4));
-  const totalGrid = latStepsNeeded * lonStepsNeeded;
-
-  let latSteps, lonSteps;
-  if (totalGrid <= maxTiles) {
-    latSteps = latStepsNeeded;
-    lonSteps = lonStepsNeeded;
-  } else {
-    const ratio = Math.sqrt(maxTiles / totalGrid);
-    latSteps = Math.max(1, Math.round(latStepsNeeded * ratio));
-    lonSteps = Math.max(1, Math.round(lonStepsNeeded * ratio));
-    while (latSteps * lonSteps < maxTiles && lonSteps < lonStepsNeeded) lonSteps++;
-    while (latSteps * lonSteps < maxTiles && latSteps < latStepsNeeded) latSteps++;
-    while (latSteps * lonSteps > maxTiles && lonSteps > 1) lonSteps--;
-  }
-
-  const stepLat = (lamax - lamin) / latSteps;
-  const stepLon = (lomax - lomin) / lonSteps;
-  const tiles = [];
-
-  for (let i = 0; i < latSteps; i++) {
-    for (let j = 0; j < lonSteps; j++) {
-      tiles.push({
-        lat: lamin + stepLat * (i + 0.5),
-        lon: lomin + stepLon * (j + 0.5),
-        radius: maxRadiusNm
-      });
-    }
-  }
-  return tiles.length > 0 ? tiles : [{ lat: (lamin + lamax) / 2, lon: lonCenter, radius: maxRadiusNm }];
-}
-
-async function fetchTilesBatched(tiles, batchSize = 5, delayMs = 1100) {
-  const allAircraft = [];
-  for (let i = 0; i < tiles.length; i += batchSize) {
-    const batch = tiles.slice(i, i + batchSize);
-    const results = await Promise.allSettled(
-      batch.map((tile) =>
-        httpsRequest(`https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`, { timeout: 15000 })
-      )
-    );
-    for (const r of results) {
-      if (r.status !== "fulfilled") continue;
-      try {
-        const data = JSON.parse(r.value.body);
-        if (data.ac) allAircraft.push(...data.ac);
-      } catch (e) { /* skip parse errors */ }
-    }
-    if (i + batchSize < tiles.length) {
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  }
-  return allAircraft;
 }
 
 function getCountryFromHex(hex) {
@@ -150,33 +86,212 @@ function getCountryFromHex(hex) {
   return "Unknown";
 }
 
-function convertToOpenSkyFormat(airplanesData) {
+function acToStateVector(ac) {
   const now = Math.floor(Date.now() / 1000);
-  const states = [];
-  for (const ac of (airplanesData.ac || [])) {
-    if (ac.lat == null || ac.lon == null) continue;
-    states.push([
-      ac.hex || null,
-      (ac.flight || "").trim() || null,
-      getCountryFromHex(ac.hex),
-      ac.seen_pos != null ? Math.round(now - ac.seen_pos) : null,
-      ac.seen != null ? Math.round(now - ac.seen) : now,
-      ac.lon,
-      ac.lat,
-      ac.alt_baro != null && ac.alt_baro !== "ground" ? ac.alt_baro * 0.3048 : null,
-      ac.alt_baro === "ground",
-      ac.gs != null ? ac.gs * 0.514444 : null,
-      ac.track != null ? ac.track : null,
-      ac.baro_rate != null ? ac.baro_rate * 0.00508 : null,
-      null,
-      ac.alt_geom != null && ac.alt_geom !== "ground" ? ac.alt_geom * 0.3048 : null,
-      ac.squawk || null,
-      ac.spi === 1,
-      0,
-      0,
-    ]);
+  return [
+    ac.hex || null,
+    (ac.flight || "").trim() || null,
+    getCountryFromHex(ac.hex),
+    ac.seen_pos != null ? Math.round(now - ac.seen_pos) : null,
+    ac.seen != null ? Math.round(now - ac.seen) : now,
+    ac.lon,
+    ac.lat,
+    ac.alt_baro != null && ac.alt_baro !== "ground" ? ac.alt_baro * 0.3048 : null,
+    ac.alt_baro === "ground",
+    ac.gs != null ? ac.gs * 0.514444 : null,
+    ac.track != null ? ac.track : null,
+    ac.baro_rate != null ? ac.baro_rate * 0.00508 : null,
+    null,
+    ac.alt_geom != null && ac.alt_geom !== "ground" ? ac.alt_geom * 0.3048 : null,
+    ac.squawk || null,
+    ac.spi === 1,
+    0,
+    0,
+  ];
+}
+
+function generateGlobalGrid() {
+  const tiles = [];
+  const RADIUS = 240;
+  const latMin = -80, latMax = 80, lonMin = -180, lonMax = 180;
+  const latStepDeg = (RADIUS * 2) / 60 * 1.4;
+  const lonStepDeg = (RADIUS * 2) / 60 * 1.4;
+
+  for (let lat = latMin; lat < latMax; lat += latStepDeg) {
+    for (let lon = lonMin; lon < lonMax; lon += lonStepDeg) {
+      const centerLat = Math.min(lat + latStepDeg / 2, latMax);
+      const centerLon = lon + lonStepDeg / 2;
+      tiles.push({ lat: centerLat, lon: centerLon > 180 ? centerLon - 360 : centerLon, radius: RADIUS });
+    }
   }
-  return { time: now, states };
+  return tiles;
+}
+
+function generateViewportTiles(lamin, lomin, lamax, lomax) {
+  const tiles = [];
+  const RADIUS = 240;
+  const latSpanNm = (lamax - lamin) * 60;
+  const lonSpanNm = (lomax - lomin) * 60 * Math.cos(((lamin + lamax) / 2) * Math.PI / 180);
+  const stepNm = RADIUS * 1.5;
+  const latSteps = Math.max(1, Math.ceil(latSpanNm / stepNm));
+  const lonSteps = Math.max(1, Math.ceil(lonSpanNm / stepNm));
+  const stepLat = (lamax - lamin) / latSteps;
+  const stepLon = (lomax - lomin) / lonSteps;
+
+  for (let i = 0; i < latSteps; i++) {
+    for (let j = 0; j < lonSteps; j++) {
+      tiles.push({
+        lat: lamin + stepLat * (i + 0.5),
+        lon: lomin + stepLon * (j + 0.5),
+        radius: RADIUS,
+      });
+    }
+  }
+  return tiles;
+}
+
+function mergeAircraftFromResponse(body) {
+  try {
+    const data = JSON.parse(body);
+    if (!data.ac) return 0;
+    const now = Date.now();
+    let count = 0;
+    for (const ac of data.ac) {
+      if (ac.lat == null || ac.lon == null || !ac.hex) continue;
+      const existing = aircraftCache.get(ac.hex);
+      aircraftCache.set(ac.hex, {
+        hex: ac.hex,
+        flight: (ac.flight || "").trim(),
+        lat: ac.lat,
+        lon: ac.lon,
+        alt_baro: ac.alt_baro,
+        alt_geom: ac.alt_geom,
+        gs: ac.gs,
+        track: ac.track,
+        baro_rate: ac.baro_rate,
+        squawk: ac.squawk,
+        spi: ac.spi,
+        seen_pos: ac.seen_pos,
+        seen: ac.seen,
+        category: ac.category,
+        db_flags: ac.db_flags,
+        ts: now,
+      });
+      count++;
+    }
+    return count;
+  } catch (e) {
+    return 0;
+  }
+}
+    }
+    return added;
+  } catch (e) {
+    return 0;
+  }
+}
+
+async function fetchTile(tile) {
+  const url = `https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`;
+  try {
+    const resp = await httpsRequest(url, { timeout: 12000 });
+    if (resp.status === 200) {
+      return mergeAircraftFromResponse(resp.body);
+    } else if (resp.status === 403) {
+      await new Promise(r => setTimeout(r, 2500));
+      const retry = await httpsRequest(url, { timeout: 12000 });
+      if (retry.status === 200) return mergeAircraftFromResponse(retry.body);
+    }
+  } catch (e) {}
+  return 0;
+}
+
+async function runScan(tiles, generation) {
+  scanInProgress = true;
+  let totalFetched = 0;
+  const start = Date.now();
+
+  for (let i = 0; i < tiles.length; i++) {
+    if (generation !== scanGeneration) {
+      console.log(`Scan generation changed, aborting`);
+      break;
+    }
+    const reqStart = Date.now();
+    const added = await fetchTile(tiles[i]);
+    totalFetched += added;
+
+    if ((i + 1) % 50 === 0) {
+      console.log(`Scan progress: ${i + 1}/${tiles.length} tiles, cache: ${aircraftCache.size}`);
+    }
+
+    const elapsed = Date.now() - reqStart;
+    if (elapsed < RATE_LIMIT_MS) {
+      await new Promise(r => setTimeout(r, RATE_LIMIT_MS - elapsed));
+    }
+  }
+
+  const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+  console.log(`Scan complete: ${tiles.length} tiles in ${elapsed}s, ${totalFetched} aircraft processed, cache: ${aircraftCache.size}`);
+  lastScanTime = Date.now();
+  scanInProgress = false;
+}
+
+function pruneStale() {
+  const now = Date.now();
+  let pruned = 0;
+  for (const [hex, ac] of aircraftCache) {
+    if (now - ac.ts > STALE_TIMEOUT_MS) {
+      aircraftCache.delete(hex);
+      pruned++;
+    }
+  }
+  if (pruned > 0) console.log(`Pruned ${pruned} stale aircraft, cache: ${aircraftCache.size}`);
+}
+
+function startGlobalScan() {
+  scanGeneration++;
+  const tiles = generateGlobalGrid();
+  console.log(`Starting global scan: ${tiles.length} tiles`);
+  runScan(tiles, scanGeneration);
+}
+
+function startViewportScan(lamin, lomin, lamax, lomax) {
+  if (scanInProgress) return;
+  scanGeneration++;
+  const tiles = generateViewportTiles(lamin, lomin, lamax, lomax);
+  lastViewport = { lamin, lomin, lamax, lomax };
+  console.log(`Starting viewport scan: ${tiles.length} tiles for bbox(${lamin.toFixed(1)},${lomin.toFixed(1)},${lamax.toFixed(1)},${lomax.toFixed(1)})`);
+  runScan(tiles, scanGeneration);
+}
+
+function getCacheAsStates(lamin, lomin, lamax, lomax) {
+  const states = [];
+  const now = Math.floor(Date.now() / 1000);
+  for (const [hex, ac] of aircraftCache) {
+    if (ac.lat >= lamin && ac.lat <= lamax && ac.lon >= lomin && ac.lon <= lomax) {
+      states.push([
+        ac.hex,
+        ac.flight || null,
+        getCountryFromHex(ac.hex),
+        ac.seen_pos != null ? Math.round(now - ac.seen_pos) : null,
+        ac.seen != null ? Math.round(now - ac.seen) : now,
+        ac.lon,
+        ac.lat,
+        ac.alt_baro != null && ac.alt_baro !== "ground" ? ac.alt_baro * 0.3048 : null,
+        ac.alt_baro === "ground",
+        ac.gs != null ? ac.gs * 0.514444 : null,
+        ac.track != null ? ac.track : null,
+        ac.baro_rate != null ? ac.baro_rate * 0.00508 : null,
+        null,
+        ac.alt_geom != null && ac.alt_geom !== "ground" ? ac.alt_geom * 0.3048 : null,
+        ac.squawk || null,
+        ac.spi === 1,
+        0,
+        0,
+      ]);
+    }
+  }
+  return states;
 }
 
 const server = http.createServer(async (req, res) => {
@@ -186,10 +301,13 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
-
   if (req.url === "/health") {
-    return json(res, 200, { ok: true, distPath });
+    return json(res, 200, {
+      ok: true,
+      cacheSize: aircraftCache.size,
+      scanInProgress,
+      lastScanTime: lastScanTime ? new Date(lastScanTime).toISOString() : null,
+    });
   }
 
   if (req.url === "/test") {
@@ -213,31 +331,32 @@ const server = http.createServer(async (req, res) => {
   if (req.url.startsWith("/oskyapi/states/all")) {
     try {
       const urlObj = new URL(req.url, "http://localhost");
-      const lamin = parseFloat(urlObj.searchParams.get("lamin") || "45");
-      const lomin = parseFloat(urlObj.searchParams.get("lomin") || "0");
-      const lamax = parseFloat(urlObj.searchParams.get("lamax") || "55");
-      const lomax = parseFloat(urlObj.searchParams.get("lomax") || "15");
-      const tiles = bboxToTiles(lamin, lomin, lamax, lomax);
-      console.log(`bbox(${lamin.toFixed(1)},${lomin.toFixed(1)},${lamax.toFixed(1)},${lomax.toFixed(1)}) -> ${tiles.length} tile(s)`);
-      const allAircraft = await fetchTilesBatched(tiles, 2, 1100);
-      const allStates = [];
-      const seenHex = new Set();
-      const converted = convertToOpenSkyFormat({ ac: allAircraft });
-      for (const sv of converted.states) {
-        if (sv[0] && !seenHex.has(sv[0])) {
-          seenHex.add(sv[0]);
-          allStates.push(sv);
-        }
+      const lamin = parseFloat(urlObj.searchParams.get("lamin") || "-85");
+      const lomin = parseFloat(urlObj.searchParams.get("lomin") || "-180");
+      const lamax = parseFloat(urlObj.searchParams.get("lamax") || "85");
+      const lomax = parseFloat(urlObj.searchParams.get("lomax") || "180");
+
+      if (aircraftCache.size === 0) {
+        if (!scanInProgress) startGlobalScan();
+        return json(res, 200, { time: Math.floor(Date.now() / 1000), states: [] });
       }
-      console.log(`Total unique aircraft: ${allStates.length}`);
+
+      const states = getCacheAsStates(lamin, lomin, lamax, lomax);
+      console.log(`Cache hit: ${aircraftCache.size} cached, ${states.length} in viewport`);
+
       const now = Math.floor(Date.now() / 1000);
       cors(res);
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify({ time: now, states: allStates }));
+      res.end(JSON.stringify({ time: now, states }));
+
+      if (!scanInProgress && (Date.now() - lastScanTime > SCAN_INTERVAL_MS || !lastViewport)) {
+        startViewportScan(lamin, lomin, lamax, lomax);
+      }
     } catch (err) {
-      console.error("airplanes.live proxy error:", err.message);
-      return json(res, 502, { error: "airplanes.live API error: " + err.message });
+      console.error("States error:", err.message);
+      return json(res, 502, { error: err.message });
     }
+    return;
   }
 
   if (req.url.startsWith("/oskyapi/")) {
@@ -294,6 +413,8 @@ const server = http.createServer(async (req, res) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`LISTENING on 0.0.0.0:${PORT}`);
+  setInterval(pruneStale, 60000);
+  startGlobalScan();
 });
 server.on("error", (err) => {
   console.error("SERVER ERROR:", err);
