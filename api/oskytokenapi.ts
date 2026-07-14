@@ -20,7 +20,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const clientSecret = process.env.VITE_REACT_OSKY_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    res.status(500).json({ error: 'Client ID/Secret is missing!' });
+    res.status(500).json({
+      error: 'Client ID/Secret is missing!',
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      envKeys: Object.keys(process.env).filter(k => k.includes('OSKY') || k.includes('AIRPORT') || k.includes('VITE'))
+    });
     return;
   }
 
