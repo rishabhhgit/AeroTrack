@@ -7,7 +7,7 @@
     "start:proxy": "ts-node src/opensky/opensky-token-proxy.ts",
     "dev": "concurrently \"npm run start:proxy\" \"vite\"",
     "build": "vite build",
-    "start": "node server.js",
+    "start": "node server.cjs",
     "lint": "eslint .",
     "preview": "concurrently \"npm run start:proxy\" \"vite preview\""
   },

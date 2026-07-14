@@ -1,9 +1,5 @@
-import express from "express";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const express = require("express");
+const path = require("path");
 
 const app = express();
 
@@ -57,11 +53,10 @@ app.get("/oskytokenapi", async (req, res) => {
   }
 });
 
-app.get("/oskyapi/{*path}", async (req, res) => {
-  const rawPath = req.params.path;
-  const path = Array.isArray(rawPath) ? rawPath.join('/') : rawPath;
+app.get("/oskyapi/*", async (req, res) => {
+  const apiPath = req.params[0];
   const qs = new URL(req.url, "http://localhost").search;
-  const url = `${OPENSKY_API_BASE}/${path}${qs}`;
+  const url = `${OPENSKY_API_BASE}/${apiPath}${qs}`;
 
   try {
     const headers = { Accept: "application/json" };
@@ -77,12 +72,11 @@ app.get("/oskyapi/{*path}", async (req, res) => {
   }
 });
 
-app.get("/airportdbapi/{*path}", async (req, res) => {
-  const rawPath = req.params.path;
-  const path = Array.isArray(rawPath) ? rawPath.join('/') : rawPath;
+app.get("/airportdbapi/*", async (req, res) => {
+  const apiPath = req.params[0];
   const qs = new URL(req.url, "http://localhost").search;
-  const separator = path.includes("?") ? "&" : "?";
-  const url = `${AIRPORTDB_API_BASE}/${path}${qs}${qs ? "&" : "?"}apiToken=${AIRPORTDB_TOKEN}`;
+  const separator = apiPath.includes("?") ? "&" : "?";
+  const url = `${AIRPORTDB_API_BASE}/${apiPath}${qs}${qs ? "&" : "?"}apiToken=${AIRPORTDB_TOKEN}`;
 
   try {
     const resp = await fetch(url, {
@@ -97,10 +91,10 @@ app.get("/airportdbapi/{*path}", async (req, res) => {
   }
 });
 
-const distPath = join(__dirname, "dist");
+const distPath = path.join(__dirname, "dist");
 app.use(express.static(distPath));
-app.get("/{*splat}", (req, res) => {
-  res.sendFile(join(distPath, "index.html"));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
 });
 
 const PORT = process.env.PORT || 3000;
