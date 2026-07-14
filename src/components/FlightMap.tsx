@@ -915,7 +915,7 @@ const FlightMap: React.FC<Props> = (props) => {
   }, [styleTheme.map.style]);
 
   // Get settings
-  const showDataOverlayOnMap = appContext.pullSetting(SettingKeys.ShowDataOverlayOnMap);
+  const showDataOverlayOnMap = appContext.pullSetting(SettingKeys.ShowDataOverlayOnMap) === true;
 
   const handleAirportSelect = (airport: IAirportData) => {
 
