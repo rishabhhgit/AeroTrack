@@ -72,10 +72,6 @@ function getCountryFromHex(hex) {
   if (p >= 0xB0 && p <= 0xBF) return "China";
   if (p >= 0xD0 && p <= 0xDF) return "Germany";
   if (p >= 0x70 && p <= 0x7F) return "Russia";
-  if (p >= 0x80 && p <= 0x83) return "Australia";
-  if (p >= 0xA0 && p <= 0xA3) return "India";
-  if (p >= 0x60 && p <= 0x63) return "Brazil";
-  if (p >= 0x84 && p <= 0x87) return "New Zealand";
   if (p >= 0x40 && p <= 0x43) return "United Kingdom";
   if (p >= 0xF4 && p <= 0xF7) return "United Kingdom";
   if (p >= 0x48 && p <= 0x4B) return "France";
@@ -89,15 +85,21 @@ function getCountryFromHex(hex) {
   if (p >= 0x44 && p <= 0x47) return "Germany";
   if (p >= 0xF8 && p <= 0xFB) return "Germany";
   if (p >= 0x3C && p <= 0x3F) return "Netherlands";
+  if (p >= 0x80 && p <= 0x83) return "Australia";
+  if (p >= 0x84 && p <= 0x87) return "Japan";
+  if (p >= 0xA0 && p <= 0xA3) return "India";
+  if (p >= 0xA4 && p <= 0xA7) return "South Korea";
+  if (p >= 0x60 && p <= 0x63) return "Brazil";
+  if (p >= 0x10 && p <= 0x1F) return "Africa";
+  if (p >= 0x20 && p <= 0x2F) return "South America";
+  if (p >= 0x64 && p <= 0x6F) return "South America";
+  if (p >= 0xA8 && p <= 0xAF) return "Asia";
+  if (p >= 0x88 && p <= 0x8F) return "Oceania";
   if (p >= 0x4C && p <= 0x4F) return "Europe";
   if (p >= 0xEC && p <= 0xEF) return "Europe";
   if (p >= 0xFC && p <= 0xFF) return "Europe";
-  if (p >= 0xA4 && p <= 0xAF) return "Asia";
-  if (p >= 0x64 && p <= 0x6F) return "South America";
-  if (p >= 0x20 && p <= 0x2F) return "South America";
-  if (p >= 0x10 && p <= 0x1F) return "Africa";
-  if (p >= 0x88 && p <= 0x8F) return "Oceania";
-  if (p >= 0x00 && p <= 0x0F) return "Reserved";
+  if (p >= 0x90 && p <= 0x9F) return "Unknown";
+  if (p >= 0x00 && p <= 0x0F) return "Unknown";
   return "Unknown";
 }
 
