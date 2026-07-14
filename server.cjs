@@ -15,9 +15,14 @@ setInterval(() => console.log(`HEARTBEAT ${new Date().toISOString()}`), 30000);
 const OPENSKY_AUTH_HOST = "auth.opensky-network.org";
 const OPENSKY_API_HOST = "opensky-network.org";
 const AIRPORTDB_HOST = "airportdb.io";
+const OPENSKY_WORKER_URL = process.env.OPENSKY_WORKER_URL || "";
 
-dns.lookup(OPENSKY_API_HOST, (err, addr) => console.log("DNS opensky-network.org:", err ? err.message : addr));
 dns.lookup(AIRPORTDB_HOST, (err, addr) => console.log("DNS airportdb.io:", err ? err.message : addr));
+if (OPENSKY_WORKER_URL) {
+  console.log("OpenSky relay:", OPENSKY_WORKER_URL);
+} else {
+  dns.lookup(OPENSKY_API_HOST, (err, addr) => console.log("DNS opensky-network.org:", err ? err.message : addr));
+}
 
 const CLIENT_ID = process.env.VITE_REACT_OSKY_CLIENT_ID;
 const CLIENT_SECRET = process.env.VITE_REACT_OSKY_CLIENT_SECRET;
@@ -91,22 +96,22 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url === "/test") {
     const results = {};
-    try {
-      const r = await httpsRequest(`https://${OPENSKY_API_HOST}/api/states/all?limit=1`, { timeout: 10000 });
-      results.opensky = { status: r.status, bytes: r.body.length, snippet: r.body.substring(0, 100) };
-    } catch (e) { results.opensky = { error: e.message }; }
+    if (OPENSKY_WORKER_URL) {
+      try {
+        const r = await httpsRequest(`${OPENSKY_WORKER_URL}?path=/api/states/all&query=limit%3D1`, { timeout: 15000 });
+        results.opensky_via_worker = { status: r.status, bytes: r.body.length, snippet: r.body.substring(0, 100) };
+      } catch (e) { results.opensky_via_worker = { error: e.message }; }
+    } else {
+      try {
+        const r = await httpsRequest(`https://${OPENSKY_API_HOST}/api/states/all?limit=1`, { timeout: 10000 });
+        results.opensky = { status: r.status, bytes: r.body.length, snippet: r.body.substring(0, 100) };
+      } catch (e) { results.opensky = { error: e.message }; }
+    }
     try {
       const r = await httpsRequest(`https://${AIRPORTDB_HOST}/api/v1/search/ICN?apiToken=${AIRPORTDB_TOKEN}`, { timeout: 10000 });
       results.airportdb = { status: r.status, bytes: r.body.length };
     } catch (e) { results.airportdb = { error: e.message }; }
-    try {
-      const r = await http.request;
-      results.dns = await new Promise((resolve) => {
-        dns.resolve4(OPENSKY_API_HOST, (err, addresses) => {
-          resolve(err ? { error: err.message } : { addresses });
-        });
-      });
-    } catch (e) { results.dns = { error: e.message }; }
+    results.workerUrl = OPENSKY_WORKER_URL || "(not set)";
     return json(res, 200, results);
   }
 
@@ -120,16 +125,27 @@ const server = http.createServer(async (req, res) => {
     params.append("client_secret", CLIENT_SECRET);
     try {
       console.log("Fetching OpenSky token...");
-      const resp = await httpsRequest(`https://${OPENSKY_AUTH_HOST}/auth/realms/opensky-network/protocol/openid-connect/token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString(),
-        timeout: 15000,
-      });
-      console.log("OpenSky token response:", resp.status);
+      let tokenResp;
+      if (OPENSKY_WORKER_URL) {
+        const workerUrl = `${OPENSKY_WORKER_URL}?path=/auth/realms/opensky-network/protocol/openid-connect/token`;
+        tokenResp = await httpsRequest(workerUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: params.toString(),
+          timeout: 15000,
+        });
+      } else {
+        tokenResp = await httpsRequest(`https://${OPENSKY_AUTH_HOST}/auth/realms/opensky-network/protocol/openid-connect/token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: params.toString(),
+          timeout: 15000,
+        });
+      }
+      console.log("OpenSky token response:", tokenResp.status);
       cors(res);
-      res.writeHead(resp.status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      return res.end(resp.body);
+      res.writeHead(tokenResp.status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      return res.end(tokenResp.body);
     } catch (err) {
       console.error("OpenSky token error:", err.message);
       return json(res, 500, { error: err.message });
@@ -142,11 +158,20 @@ const server = http.createServer(async (req, res) => {
     if (req.headers.authorization) headers["Authorization"] = req.headers.authorization;
     try {
       console.log("Proxying OpenSky:", apiPath);
-      const resp = await httpsRequest(`https://${OPENSKY_API_HOST}/api/${apiPath}`, { headers, timeout: 30000 });
-      console.log("OpenSky response:", resp.status, "bytes:", resp.body.length);
+      let apiResp;
+      if (OPENSKY_WORKER_URL) {
+        const queryIdx = apiPath.indexOf("?");
+        const pathPart = queryIdx >= 0 ? apiPath.substring(0, queryIdx) : apiPath;
+        const queryPart = queryIdx >= 0 ? apiPath.substring(queryIdx + 1) : "";
+        const workerUrl = `${OPENSKY_WORKER_URL}?path=/api/${pathPart}${queryPart ? "&query=" + encodeURIComponent(queryPart) : ""}`;
+        apiResp = await httpsRequest(workerUrl, { headers, timeout: 30000 });
+      } else {
+        apiResp = await httpsRequest(`https://${OPENSKY_API_HOST}/api/${apiPath}`, { headers, timeout: 30000 });
+      }
+      console.log("OpenSky response:", apiResp.status, "bytes:", apiResp.body.length);
       cors(res);
-      res.writeHead(resp.status, { "Content-Type": resp.headers["content-type"] || "application/json" });
-      return res.end(resp.body);
+      res.writeHead(apiResp.status, { "Content-Type": apiResp.headers["content-type"] || "application/json" });
+      return res.end(apiResp.body);
     } catch (err) {
       console.error("OpenSky proxy error:", err.message);
       return json(res, 502, { error: "OpenSky API unreachable: " + err.message });
