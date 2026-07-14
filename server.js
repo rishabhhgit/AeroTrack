@@ -57,8 +57,9 @@ app.get("/oskytokenapi", async (req, res) => {
   }
 });
 
-app.get("/oskyapi/*", async (req, res) => {
-  const path = req.params[0];
+app.get("/oskyapi/{*path}", async (req, res) => {
+  const rawPath = req.params.path;
+  const path = Array.isArray(rawPath) ? rawPath.join('/') : rawPath;
   const qs = new URL(req.url, "http://localhost").search;
   const url = `${OPENSKY_API_BASE}/${path}${qs}`;
 
@@ -76,8 +77,9 @@ app.get("/oskyapi/*", async (req, res) => {
   }
 });
 
-app.get("/airportdbapi/*", async (req, res) => {
-  const path = req.params[0];
+app.get("/airportdbapi/{*path}", async (req, res) => {
+  const rawPath = req.params.path;
+  const path = Array.isArray(rawPath) ? rawPath.join('/') : rawPath;
   const qs = new URL(req.url, "http://localhost").search;
   const separator = path.includes("?") ? "&" : "?";
   const url = `${AIRPORTDB_API_BASE}/${path}${qs}${qs ? "&" : "?"}apiToken=${AIRPORTDB_TOKEN}`;
@@ -97,7 +99,7 @@ app.get("/airportdbapi/*", async (req, res) => {
 
 const distPath = join(__dirname, "dist");
 app.use(express.static(distPath));
-app.get("*", (req, res) => {
+app.get("/{*splat}", (req, res) => {
   res.sendFile(join(distPath, "index.html"));
 });
 
