@@ -21,7 +21,7 @@
     "dotenv": "^17.1.0",
     "express": "^4.21.0",
     "maplibre-gl": "^5.5.0",
-    "node-fetch": "^3.3.2",
+    "node-fetch": "^2.7.0",
     "notistack": "^3.0.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

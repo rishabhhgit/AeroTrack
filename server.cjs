@@ -3,9 +3,12 @@ const https = require("https");
 const fs = require("fs");
 const path = require("path");
 const dns = require("dns");
+const net = require("net");
 
 process.on("uncaughtException", (err) => { console.error("UNCAUGHT:", err); });
 process.on("unhandledRejection", (err) => { console.error("UNHANDLED:", err); });
+
+dns.setServers(["8.8.8.8", "8.8.4.4", "1.1.1.1"]);
 
 setInterval(() => console.log(`HEARTBEAT ${new Date().toISOString()}`), 30000);
 
@@ -28,9 +31,7 @@ console.log("Env:", JSON.stringify({
 }));
 
 let distPath = path.join(__dirname, "dist");
-if (!fs.existsSync(distPath)) {
-  distPath = __dirname;
-}
+if (!fs.existsSync(distPath)) distPath = __dirname;
 
 let indexHtml;
 try {
@@ -51,36 +52,26 @@ function json(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-function httpsGet(url, headers = {}, timeoutMs = 30000) {
+function httpsRequest(url, options = {}) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers, timeout: timeoutMs }, (res) => {
-      let body = "";
-      res.on("data", (chunk) => body += chunk);
-      res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body }));
-    });
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
-  });
-}
-
-function httpsPost(url, headers, body, timeoutMs = 30000) {
-  return new Promise((resolve, reject) => {
+    const { method = "GET", headers = {}, body, timeout = 30000 } = options;
     const u = new URL(url);
     const req = https.request({
       hostname: u.hostname,
-      port: u.port || 443,
+      port: 443,
       path: u.pathname + u.search,
-      method: "POST",
+      method,
       headers,
-      timeout: timeoutMs,
+      timeout,
+      family: 4,
     }, (res) => {
       let data = "";
       res.on("data", (chunk) => data += chunk);
       res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
     });
-    req.on("error", reject);
-    req.on("timeout", () => { req.destroy(); reject(new Error("timeout")); });
-    req.write(body);
+    req.on("error", (e) => reject(e));
+    req.on("timeout", () => { req.destroy(); reject(new Error("Request timed out")); });
+    if (body) req.write(body);
     req.end();
   });
 }
@@ -101,13 +92,21 @@ const server = http.createServer(async (req, res) => {
   if (req.url === "/test") {
     const results = {};
     try {
-      results.opensky = await httpsGet("https://opensky-network.org/api/states/all?limit=1", { Accept: "application/json" }, 10000);
-      results.opensky = { status: results.opensky.status, bytes: results.opensky.body.length };
+      const r = await httpsRequest(`https://${OPENSKY_API_HOST}/api/states/all?limit=1`, { timeout: 10000 });
+      results.opensky = { status: r.status, bytes: r.body.length, snippet: r.body.substring(0, 100) };
     } catch (e) { results.opensky = { error: e.message }; }
     try {
-      results.airportdb = await httpsGet(`https://airportdb.io/api/v1/search/ICN?apiToken=${AIRPORTDB_TOKEN}`, { Accept: "application/json" }, 10000);
-      results.airportdb = { status: results.airportdb.status, bytes: results.airportdb.body.length };
+      const r = await httpsRequest(`https://${AIRPORTDB_HOST}/api/v1/search/ICN?apiToken=${AIRPORTDB_TOKEN}`, { timeout: 10000 });
+      results.airportdb = { status: r.status, bytes: r.body.length };
     } catch (e) { results.airportdb = { error: e.message }; }
+    try {
+      const r = await http.request;
+      results.dns = await new Promise((resolve) => {
+        dns.resolve4(OPENSKY_API_HOST, (err, addresses) => {
+          resolve(err ? { error: err.message } : { addresses });
+        });
+      });
+    } catch (e) { results.dns = { error: e.message }; }
     return json(res, 200, results);
   }
 
@@ -120,13 +119,13 @@ const server = http.createServer(async (req, res) => {
     params.append("client_id", CLIENT_ID);
     params.append("client_secret", CLIENT_SECRET);
     try {
-      console.log("Fetching OpenSky token via https module...");
-      const resp = await httpsPost(
-        `https://${OPENSKY_AUTH_HOST}/auth/realms/opensky-network/protocol/openid-connect/token`,
-        { "Content-Type": "application/x-www-form-urlencoded" },
-        params.toString(),
-        15000
-      );
+      console.log("Fetching OpenSky token...");
+      const resp = await httpsRequest(`https://${OPENSKY_AUTH_HOST}/auth/realms/opensky-network/protocol/openid-connect/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+        timeout: 15000,
+      });
       console.log("OpenSky token response:", resp.status);
       cors(res);
       res.writeHead(resp.status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -139,11 +138,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url.startsWith("/oskyapi/")) {
     const apiPath = req.url.slice("/oskyapi/".length);
-    const headers = { Accept: "application/json" };
+    const headers = { Accept: "application/json", "User-Agent": "AeroTrack/1.0" };
     if (req.headers.authorization) headers["Authorization"] = req.headers.authorization;
     try {
-      console.log("Proxying OpenSky via https module:", apiPath);
-      const resp = await httpsGet(`https://${OPENSKY_API_HOST}/api/${apiPath}`, headers, 30000);
+      console.log("Proxying OpenSky:", apiPath);
+      const resp = await httpsRequest(`https://${OPENSKY_API_HOST}/api/${apiPath}`, { headers, timeout: 30000 });
       console.log("OpenSky response:", resp.status, "bytes:", resp.body.length);
       cors(res);
       res.writeHead(resp.status, { "Content-Type": resp.headers["content-type"] || "application/json" });
@@ -158,11 +157,7 @@ const server = http.createServer(async (req, res) => {
     const apiPath = req.url.slice("/airportdbapi/".length);
     const separator = apiPath.includes("?") ? "&" : "?";
     try {
-      const resp = await httpsGet(
-        `https://${AIRPORTDB_HOST}/api/v1/${apiPath}${separator}apiToken=${AIRPORTDB_TOKEN}`,
-        { Accept: "application/json" },
-        15000
-      );
+      const resp = await httpsRequest(`https://${AIRPORTDB_HOST}/api/v1/${apiPath}${separator}apiToken=${AIRPORTDB_TOKEN}`, { timeout: 15000 });
       cors(res);
       res.writeHead(resp.status, { "Content-Type": resp.headers["content-type"] || "application/json" });
       return res.end(resp.body);
