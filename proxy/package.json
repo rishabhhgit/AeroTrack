@@ -1,0 +1,12 @@
+{
+  "name": "opensky-relay",
+  "version": "1.0.0",
+  "description": "OpenSky API relay proxy",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
