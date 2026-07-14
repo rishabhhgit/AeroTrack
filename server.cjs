@@ -104,11 +104,17 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  const filePath = path.join(distPath, req.url === "/" ? "index.html" : req.url);
+  if (req.url === "/" || !path.extname(req.url.split("?")[0])) {
+    res.writeHead(200, { "Content-Type": "text/html" });
+    return res.end(indexHtml);
+  }
+
+  const safePath = req.url.split("?")[0];
+  const filePath = path.join(distPath, safePath);
   try {
     if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
       const ext = path.extname(filePath);
-      const types = { ".js": "application/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff" };
+      const types = { ".html": "text/html", ".js": "application/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".woff2": "font/woff2", ".woff": "font/woff", ".map": "application/json" };
       const content = fs.readFileSync(filePath);
       res.writeHead(200, { "Content-Type": types[ext] || "application/octet-stream" });
       return res.end(content);
