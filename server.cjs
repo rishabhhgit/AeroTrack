@@ -9,9 +9,8 @@ process.on("unhandledRejection", (err) => { console.error("UNHANDLED:", err); })
 const AIRPLANE_HOST = "api.airplanes.live";
 const AIRPORTDB_HOST = "airportdb.io";
 const AIRPORTDB_TOKEN = process.env.VITE_AIRPORTDB_TOKEN;
-const RATE_LIMIT_MS = 1020;
-const STALE_TIMEOUT_MS = 20 * 60 * 1000;
-const REFRESH_INTERVAL_MS = 8 * 60 * 1000;
+const RATE_LIMIT_MS = 1010;
+const STALE_TIMEOUT_MS = 15 * 60 * 1000;
 
 let distPath = path.join(__dirname, "dist");
 if (!fs.existsSync(distPath)) distPath = __dirname;
@@ -27,6 +26,7 @@ const aircraftCache = new Map();
 let globalScanRunning = false;
 let globalScanComplete = false;
 let lastRefreshTime = 0;
+let viewportScanRunning = false;
 
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -69,7 +69,6 @@ function getCountryFromHex(hex) {
   if (p >= 0x50 && p <= 0x5F) return "United States";
   if (p >= 0xC0 && p <= 0xCF) return "Canada";
   if (p >= 0xB0 && p <= 0xBF) return "China";
-  if (p >= 0xD0 && p <= 0xDF) return "Germany";
   if (p >= 0x70 && p <= 0x7F) return "Russia";
   if (p >= 0x40 && p <= 0x43) return "United Kingdom";
   if (p >= 0xF4 && p <= 0xF7) return "United Kingdom";
@@ -82,6 +81,7 @@ function getCountryFromHex(hex) {
   if (p >= 0xE8 && p <= 0xEB) return "Italy";
   if (p >= 0x30 && p <= 0x33) return "Germany";
   if (p >= 0x44 && p <= 0x47) return "Germany";
+  if (p >= 0xD0 && p <= 0xDF) return "Germany";
   if (p >= 0xF8 && p <= 0xFB) return "Germany";
   if (p >= 0x3C && p <= 0x3F) return "Netherlands";
   if (p >= 0x80 && p <= 0x83) return "Australia";
@@ -89,14 +89,77 @@ function getCountryFromHex(hex) {
   if (p >= 0xA0 && p <= 0xA3) return "India";
   if (p >= 0xA4 && p <= 0xA7) return "South Korea";
   if (p >= 0x60 && p <= 0x63) return "Brazil";
-  if (p >= 0x10 && p <= 0x1F) return "Africa";
-  if (p >= 0x20 && p <= 0x2F) return "South America";
-  if (p >= 0x64 && p <= 0x6F) return "South America";
-  if (p >= 0xA8 && p <= 0xAF) return "Asia";
-  if (p >= 0x88 && p <= 0x8F) return "Oceania";
-  if (p >= 0x4C && p <= 0x4F) return "Europe";
-  if (p >= 0xEC && p <= 0xEF) return "Europe";
-  if (p >= 0xFC && p <= 0xFF) return "Europe";
+  if (p === 0xA8) return "Pakistan";
+  if (p === 0xA9) return "Pakistan";
+  if (p === 0xAA) return "India";
+  if (p === 0xAB) return "Sri Lanka";
+  if (p === 0xAC) return "Kazakhstan";
+  if (p === 0xAD) return "Turkey";
+  if (p === 0xAE) return "Iran";
+  if (p === 0xAF) return "Saudi Arabia";
+  if (p === 0x88) return "New Zealand";
+  if (p === 0x89) return "Indonesia";
+  if (p === 0x8A) return "Malaysia";
+  if (p === 0x8B) return "Singapore";
+  if (p === 0x8C) return "Philippines";
+  if (p === 0x8D) return "Thailand";
+  if (p === 0x8E) return "Vietnam";
+  if (p === 0x8F) return "Taiwan";
+  if (p === 0x14) return "South Africa";
+  if (p === 0x18) return "Egypt";
+  if (p === 0x10) return "Nigeria";
+  if (p === 0x11) return "Morocco";
+  if (p === 0x12) return "Algeria";
+  if (p === 0x15) return "Ethiopia";
+  if (p === 0x16) return "Kenya";
+  if (p === 0x17) return "Tanzania";
+  if (p === 0x19) return "Libya";
+  if (p === 0x1A) return "Sudan";
+  if (p === 0x1B) return "Ghana";
+  if (p === 0x1C) return "Senegal";
+  if (p === 0x1D) return "Cameroon";
+  if (p === 0x1E) return "Ivory Coast";
+  if (p === 0x1F) return "Zimbabwe";
+  if (p === 0x20) return "Argentina";
+  if (p === 0x21) return "Argentina";
+  if (p === 0x22) return "Chile";
+  if (p === 0x23) return "Peru";
+  if (p === 0x24) return "Venezuela";
+  if (p === 0x25) return "Colombia";
+  if (p === 0x26) return "Ecuador";
+  if (p === 0x27) return "Bolivia";
+  if (p === 0x28) return "Paraguay";
+  if (p === 0x29) return "Uruguay";
+  if (p === 0x2A) return "Guyana";
+  if (p === 0x2B) return "Suriname";
+  if (p === 0x2C) return "Trinidad and Tobago";
+  if (p === 0x2D) return "Costa Rica";
+  if (p === 0x2E) return "Panama";
+  if (p === 0x2F) return "Guatemala";
+  if (p === 0x64) return "Mexico";
+  if (p === 0x65) return "Mexico";
+  if (p === 0x66) return "Cuba";
+  if (p === 0x67) return "Honduras";
+  if (p === 0x68) return "El Salvador";
+  if (p === 0x69) return "Nicaragua";
+  if (p === 0x6A) return "Dominican Republic";
+  if (p === 0x6B) return "Haiti";
+  if (p === 0x6C) return "Jamaica";
+  if (p === 0x6D) return "Puerto Rico";
+  if (p === 0x6E) return "Guadeloupe";
+  if (p === 0x6F) return "Martinique";
+  if (p === 0x4C) return "Norway";
+  if (p === 0x4D) return "Sweden";
+  if (p === 0x4E) return "Switzerland";
+  if (p === 0x4F) return "Austria";
+  if (p === 0xEC) return "Poland";
+  if (p === 0xED) return "Czech Republic";
+  if (p === 0xEE) return "Romania";
+  if (p === 0xEF) return "Greece";
+  if (p === 0xFC) return "Ireland";
+  if (p === 0xFD) return "Finland";
+  if (p === 0xFE) return "Belgium";
+  if (p === 0xFF) return "Portugal";
   if (p >= 0x90 && p <= 0x9F) return "Unknown";
   if (p >= 0x00 && p <= 0x0F) return "Unknown";
   return "Unknown";
@@ -105,14 +168,33 @@ function getCountryFromHex(hex) {
 function generateGlobalGrid() {
   const tiles = [];
   const RADIUS = 240;
-  const latStepDeg = (RADIUS * 2) / 60 * 0.65;
-  const lonStepDeg = (RADIUS * 2) / 60 * 0.65;
-
+  const latStepDeg = (RADIUS * 2) / 60 * 1.0;
+  const lonStepDeg = (RADIUS * 2) / 60 * 1.0;
   for (let lat = -80; lat < 80; lat += latStepDeg) {
     for (let lon = -180; lon < 180; lon += lonStepDeg) {
       tiles.push({
         lat: Math.min(lat + latStepDeg / 2, 80),
         lon: lon + lonStepDeg / 2 > 180 ? lon + lonStepDeg / 2 - 360 : lon + lonStepDeg / 2,
+        radius: RADIUS,
+      });
+    }
+  }
+  return tiles;
+}
+
+function generateViewportTiles(bounds) {
+  const tiles = [];
+  const RADIUS = 240;
+  const step = (RADIUS * 2) / 60 * 1.0;
+  const latStart = Math.floor(bounds.southernLatitude / step) * step;
+  const latEnd = Math.ceil(bounds.northernLatitude / step) * step;
+  const lonStart = Math.floor(bounds.westernLongitude / step) * step;
+  const lonEnd = Math.ceil(bounds.easternLongitude / step) * step;
+  for (let lat = latStart; lat < latEnd; lat += step) {
+    for (let lon = lonStart; lon < lonEnd; lon += step) {
+      tiles.push({
+        lat: Math.max(-80, Math.min(lat + step / 2, 80)),
+        lon: lon + step / 2 > 180 ? lon + step / 2 - 360 : lon + step / 2,
         radius: RADIUS,
       });
     }
@@ -198,6 +280,26 @@ async function runGlobalScan() {
   lastRefreshTime = Date.now();
 }
 
+async function runViewportScan(bounds) {
+  if (viewportScanRunning) return;
+  viewportScanRunning = true;
+  const tiles = generateViewportTiles(bounds);
+  if (tiles.length === 0) { viewportScanRunning = false; return; }
+  console.log(`Viewport scan: ${tiles.length} tiles for bounds [${bounds.southernLatitude.toFixed(1)},${bounds.westernLongitude.toFixed(1)} - ${bounds.northernLatitude.toFixed(1)},${bounds.easternLongitude.toFixed(1)}]`);
+
+  for (let i = 0; i < tiles.length; i++) {
+    const reqStart = Date.now();
+    await fetchTile(tiles[i]);
+    const elapsed = Date.now() - reqStart;
+    if (elapsed < RATE_LIMIT_MS) {
+      await new Promise(r => setTimeout(r, RATE_LIMIT_MS - elapsed));
+    }
+  }
+
+  console.log(`Viewport scan complete: ${tiles.length} tiles, cache: ${aircraftCache.size}`);
+  viewportScanRunning = false;
+}
+
 function pruneStale() {
   if (!globalScanComplete) return;
   const now = Date.now();
@@ -209,6 +311,18 @@ function pruneStale() {
     }
   }
   if (pruned > 0) console.log(`Pruned ${pruned} stale aircraft, cache: ${aircraftCache.size}`);
+}
+
+function parseBounds(urlStr) {
+  try {
+    const u = new URL(urlStr, "http://localhost");
+    const lamin = parseFloat(u.searchParams.get("lamin"));
+    const lomin = parseFloat(u.searchParams.get("lomin"));
+    const lamax = parseFloat(u.searchParams.get("lamax"));
+    const lomax = parseFloat(u.searchParams.get("lomax"));
+    if (isNaN(lamin) || isNaN(lomin) || isNaN(lamax) || isNaN(lomax)) return null;
+    return { southernLatitude: lamin, westernLongitude: lomin, northernLatitude: lamax, easternLongitude: lomax };
+  } catch (e) { return null; }
 }
 
 function getAllCachedStates() {
@@ -252,6 +366,7 @@ const server = http.createServer(async (req, res) => {
       cacheSize: aircraftCache.size,
       globalScanRunning,
       globalScanComplete,
+      viewportScanRunning,
       lastRefresh: lastRefreshTime ? new Date(lastRefreshTime).toISOString() : null,
     });
   }
@@ -276,6 +391,10 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url.startsWith("/oskyapi/states/all")) {
     try {
+      const bounds = parseBounds(req.url);
+      if (bounds && globalScanComplete && !viewportScanRunning) {
+        runViewportScan(bounds).catch(() => {});
+      }
       const states = getAllCachedStates();
       const now = Math.floor(Date.now() / 1000);
       cors(res);
@@ -349,7 +468,7 @@ server.listen(PORT, "0.0.0.0", () => {
         console.log(`Starting periodic refresh`);
         await runGlobalScan();
       }
-    }, REFRESH_INTERVAL_MS);
+    }, 10 * 60 * 1000);
   });
 });
 server.on("error", (err) => {
