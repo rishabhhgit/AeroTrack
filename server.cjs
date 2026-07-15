@@ -22,11 +22,46 @@ try {
   indexHtml = "<h1>AeroTrack - index.html not found</h1>";
 }
 
+const CACHE_FILE = path.join(__dirname, "aircraft-cache.json");
+
 const aircraftCache = new Map();
 let globalScanRunning = false;
 let globalScanComplete = false;
 let lastRefreshTime = 0;
 let viewportScanRunning = false;
+
+function saveCacheToDisk() {
+  try {
+    const data = Object.fromEntries(aircraftCache);
+    fs.writeFileSync(CACHE_FILE, JSON.stringify(data));
+    console.log(`Cache saved: ${aircraftCache.size} aircraft`);
+  } catch (e) {
+    console.error("Cache save failed:", e.message);
+  }
+}
+
+function loadCacheFromDisk() {
+  try {
+    if (!fs.existsSync(CACHE_FILE)) return false;
+    const raw = fs.readFileSync(CACHE_FILE, "utf-8");
+    const data = JSON.parse(raw);
+    const now = Date.now();
+    let loaded = 0;
+    for (const [hex, ac] of Object.entries(data)) {
+      if (now - ac.ts < STALE_TIMEOUT_MS) {
+        aircraftCache.set(hex, ac);
+        loaded++;
+      }
+    }
+    if (loaded > 0) {
+      console.log(`Cache loaded from disk: ${loaded} aircraft`);
+      return true;
+    }
+  } catch (e) {
+    console.error("Cache load failed:", e.message);
+  }
+  return false;
+}
 
 function cors(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -410,17 +445,37 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`LISTENING on 0.0.0.0:${PORT}`);
   setInterval(pruneStale, 60000);
-  runStartupScan().then(() => {
-    console.log(`Fast pre-seed done. Starting full global scan.`);
+  setInterval(saveCacheToDisk, 5 * 60 * 1000);
+
+  const hasCache = loadCacheFromDisk();
+  if (hasCache) {
+    globalScanComplete = true;
+    lastRefreshTime = Date.now();
+    console.log("Serving from disk cache immediately. Background refresh starting.");
     runGlobalScan().then(() => {
+      saveCacheToDisk();
       setInterval(async () => {
         if (!globalScanRunning) {
-          console.log(`Starting periodic refresh`);
           await runGlobalScan();
+          saveCacheToDisk();
         }
       }, 10 * 60 * 1000);
     });
-  });
+  } else {
+    runStartupScan().then(() => {
+      saveCacheToDisk();
+      console.log("Pre-seed done. Starting full global scan.");
+      runGlobalScan().then(() => {
+        saveCacheToDisk();
+        setInterval(async () => {
+          if (!globalScanRunning) {
+            await runGlobalScan();
+            saveCacheToDisk();
+          }
+        }, 10 * 60 * 1000);
+      });
+    });
+  }
 });
 server.on("error", (err) => {
   console.error("SERVER ERROR:", err);
