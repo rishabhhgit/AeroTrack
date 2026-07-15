@@ -207,7 +207,7 @@ async function scanTiles(tiles, label, concurrency = 1) {
       console.log(`${label}: ${i + batch.length}/${tiles.length} tiles, cache: ${aircraftCache.size}`);
     }
     const elapsed = Date.now() - reqStart;
-    const minDelay = Math.max(RATE_LIMIT_MS, concurrency === 1 ? 800 : 1200);
+    const minDelay = RATE_LIMIT_MS;
     if (elapsed < minDelay) {
       await new Promise(r => setTimeout(r, minDelay - elapsed));
     }
@@ -229,8 +229,8 @@ async function runGlobalScan() {
   if (globalScanRunning) return;
   globalScanRunning = true;
   const tiles = generateGlobalGrid();
-  console.log(`Starting global scan: ${tiles.length} tiles (2x parallel)`);
-  const elapsed = await scanTiles(tiles, "Global", 2);
+  console.log(`Starting global scan: ${tiles.length} tiles`);
+  const elapsed = await scanTiles(tiles, "Global", 1);
   console.log(`Global scan complete: ${tiles.length} tiles in ${elapsed}s, cache: ${aircraftCache.size}`);
   globalScanRunning = false;
   globalScanComplete = true;
