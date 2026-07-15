@@ -340,7 +340,7 @@ const server = http.createServer(async (req, res) => {
   if (req.url.startsWith("/oskyapi/states/all")) {
     try {
       const bounds = parseBounds(req.url);
-      if (bounds && globalScanComplete && !viewportScanRunning) {
+      if (bounds && globalScanComplete && !viewportScanRunning && !globalScanRunning) {
         runViewportScan(bounds).catch(() => {});
       }
       const states = getAllCachedStates();
