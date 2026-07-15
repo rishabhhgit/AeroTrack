@@ -9,7 +9,7 @@ process.on("unhandledRejection", (err) => { console.error("UNHANDLED:", err); })
 const AIRPLANE_HOST = "api.airplanes.live";
 const AIRPORTDB_HOST = "airportdb.io";
 const AIRPORTDB_TOKEN = process.env.VITE_AIRPORTDB_TOKEN;
-const RATE_LIMIT_MS = 1010;
+const RATE_LIMIT_MS = 1020;
 const STALE_TIMEOUT_MS = 15 * 60 * 1000;
 
 let distPath = path.join(__dirname, "dist");
@@ -98,16 +98,28 @@ function getCountryFromHex(hex) {
   return "Others";
 }
 
+const PRIORITY_TILES = [
+  [40.64, -73.78], [40.78, -73.97], [33.94, -118.41], [41.97, -87.90],
+  [29.99, -95.34], [25.79, -80.29], [37.62, -122.38], [47.45, -122.31],
+  [35.76, -140.05], [52.31, 4.77], [48.35, 11.79], [45.63, 5.08],
+  [41.80, 2.17], [40.47, -3.57], [55.97, -3.37], [49.19, 2.43],
+  [41.38, 2.07], [50.03, 14.26], [59.65, 17.94], [50.10, 14.26],
+  [22.31, 113.91], [31.14, 121.81], [35.55, 139.78], [37.46, 126.44],
+  [1.35, 103.99], [13.69, 100.75], [25.25, 55.36], [28.55, 77.10],
+  [19.09, 72.87], [-33.94, 18.60], [-23.43, -46.47], [-34.82, -56.03],
+  [6.17, -75.43], [56.03, -3.37], [60.32, 5.21], [65.63, -18.07],
+  [47.45, 8.54], [48.11, 11.58], [52.56, 13.29], [41.28, 2.07],
+];
+
 function generateGlobalGrid() {
   const tiles = [];
   const RADIUS = 240;
-  const latStepDeg = (RADIUS * 2) / 60 * 1.0;
-  const lonStepDeg = (RADIUS * 2) / 60 * 1.0;
-  for (let lat = -80; lat < 80; lat += latStepDeg) {
-    for (let lon = -180; lon < 180; lon += lonStepDeg) {
+  const step = (RADIUS * 2) / 60 * 1.0;
+  for (let lat = -80; lat < 80; lat += step) {
+    for (let lon = -180; lon < 180; lon += step) {
       tiles.push({
-        lat: Math.min(lat + latStepDeg / 2, 80),
-        lon: lon + lonStepDeg / 2 > 180 ? lon + lonStepDeg / 2 - 360 : lon + lonStepDeg / 2,
+        lat: Math.min(lat + step / 2, 80),
+        lon: lon + step / 2 > 180 ? lon + step / 2 - 360 : lon + step / 2,
         radius: RADIUS,
       });
     }
@@ -170,9 +182,6 @@ function mergeAircraftFromResponse(body) {
   }
 }
 
-const CONCURRENCY = 3;
-const DELAY_BETWEEN_BATCHES = 2000;
-
 async function fetchTile(tile) {
   const url = `https://${AIRPLANE_HOST}/v2/point/${tile.lat}/${tile.lon}/${tile.radius}`;
   try {
@@ -190,24 +199,35 @@ async function fetchTile(tile) {
 
 async function scanTiles(tiles, label) {
   const start = Date.now();
-  let done = 0;
-  for (let i = 0; i < tiles.length; i += CONCURRENCY) {
-    const batch = tiles.slice(i, i + CONCURRENCY);
-    await Promise.all(batch.map((t) => fetchTile(t)));
-    done += batch.length;
-    if (done % 50 < CONCURRENCY) {
-      console.log(`${label}: ${done}/${tiles.length} tiles, cache: ${aircraftCache.size}`);
+  for (let i = 0; i < tiles.length; i++) {
+    const reqStart = Date.now();
+    await fetchTile(tiles[i]);
+    if ((i + 1) % 50 === 0) {
+      console.log(`${label}: ${i + 1}/${tiles.length} tiles, cache: ${aircraftCache.size}`);
     }
-    await new Promise((r) => setTimeout(r, DELAY_BETWEEN_BATCHES));
+    const elapsed = Date.now() - reqStart;
+    if (elapsed < RATE_LIMIT_MS) {
+      await new Promise(r => setTimeout(r, RATE_LIMIT_MS - elapsed));
+    }
   }
   return ((Date.now() - start) / 1000).toFixed(1);
+}
+
+async function runStartupScan() {
+  globalScanRunning = true;
+  console.log(`Pre-seeding: ${PRIORITY_TILES.length} major airports`);
+  const t1 = await scanTiles(PRIORITY_TILES.map(([lat, lon]) => ({ lat, lon, radius: 240 })), "Priority");
+  console.log(`Pre-seed done in ${t1}s, cache: ${aircraftCache.size}`);
+  globalScanRunning = false;
+  globalScanComplete = true;
+  lastRefreshTime = Date.now();
 }
 
 async function runGlobalScan() {
   if (globalScanRunning) return;
   globalScanRunning = true;
   const tiles = generateGlobalGrid();
-  console.log(`Starting global scan: ${tiles.length} tiles (${CONCURRENCY}x parallel)`);
+  console.log(`Starting global scan: ${tiles.length} tiles`);
   const elapsed = await scanTiles(tiles, "Global");
   console.log(`Global scan complete: ${tiles.length} tiles in ${elapsed}s, cache: ${aircraftCache.size}`);
   globalScanRunning = false;
@@ -388,13 +408,16 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`LISTENING on 0.0.0.0:${PORT}`);
   setInterval(pruneStale, 60000);
-  runGlobalScan().then(() => {
-    setInterval(async () => {
-      if (!globalScanRunning) {
-        console.log(`Starting periodic refresh`);
-        await runGlobalScan();
-      }
-    }, 10 * 60 * 1000);
+  runStartupScan().then(() => {
+    console.log(`Fast pre-seed done. Starting full global scan.`);
+    runGlobalScan().then(() => {
+      setInterval(async () => {
+        if (!globalScanRunning) {
+          console.log(`Starting periodic refresh`);
+          await runGlobalScan();
+        }
+      }, 10 * 60 * 1000);
+    });
   });
 });
 server.on("error", (err) => {
