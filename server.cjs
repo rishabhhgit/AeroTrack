@@ -197,17 +197,19 @@ async function fetchTile(tile) {
   return 0;
 }
 
-async function scanTiles(tiles, label) {
+async function scanTiles(tiles, label, concurrency = 1) {
   const start = Date.now();
-  for (let i = 0; i < tiles.length; i++) {
+  for (let i = 0; i < tiles.length; i += concurrency) {
+    const batch = tiles.slice(i, i + concurrency);
     const reqStart = Date.now();
-    await fetchTile(tiles[i]);
-    if ((i + 1) % 50 === 0) {
-      console.log(`${label}: ${i + 1}/${tiles.length} tiles, cache: ${aircraftCache.size}`);
+    await Promise.all(batch.map((t) => fetchTile(t)));
+    if ((i + batch.length) % 50 < concurrency) {
+      console.log(`${label}: ${i + batch.length}/${tiles.length} tiles, cache: ${aircraftCache.size}`);
     }
     const elapsed = Date.now() - reqStart;
-    if (elapsed < RATE_LIMIT_MS) {
-      await new Promise(r => setTimeout(r, RATE_LIMIT_MS - elapsed));
+    const minDelay = Math.max(RATE_LIMIT_MS, concurrency === 1 ? 800 : 1200);
+    if (elapsed < minDelay) {
+      await new Promise(r => setTimeout(r, minDelay - elapsed));
     }
   }
   return ((Date.now() - start) / 1000).toFixed(1);
@@ -227,8 +229,8 @@ async function runGlobalScan() {
   if (globalScanRunning) return;
   globalScanRunning = true;
   const tiles = generateGlobalGrid();
-  console.log(`Starting global scan: ${tiles.length} tiles`);
-  const elapsed = await scanTiles(tiles, "Global");
+  console.log(`Starting global scan: ${tiles.length} tiles (2x parallel)`);
+  const elapsed = await scanTiles(tiles, "Global", 2);
   console.log(`Global scan complete: ${tiles.length} tiles in ${elapsed}s, cache: ${aircraftCache.size}`);
   globalScanRunning = false;
   globalScanComplete = true;
