@@ -1,5 +1,5 @@
 import express from "express";
-import fetch from "node-fetch";
+import cors from "cors";
 import dotenv from "dotenv";
 
 dotenv.config({ path: ".env.local" });
@@ -7,6 +7,7 @@ console.info("Client ID:", process.env.VITE_REACT_OSKY_CLIENT_ID ? "****" : "NOT
 console.info("Client Secret:", process.env.VITE_REACT_OSKY_CLIENT_SECRET ? "****" : "NOT SET");
 
 const app = express();
+app.use(cors());
 const PORT = parseInt(process.env.PROXY_PORT || '3001', 10);
 
 // Token endpoint to proxy OpenSky Network authentication
@@ -29,11 +30,12 @@ app.get("/oskytokenapi", async (_req, res) => {
   params.append("client_secret", clientSecret);
 
   try {
+    // Use global fetch (Node 18+). If running on older Node versions, install node-fetch.
     const tokenResp = await fetch(TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params
-    });
+    } as RequestInit);
 
     if (!tokenResp.ok) {
       const errorText = await tokenResp.text();

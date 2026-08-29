@@ -37,8 +37,8 @@ A real-time flight tracking application that visualizes live air traffic on an i
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/react-flight-tracker.git
-cd react-flight-tracker
+git clone https://github.com/rishabhhgit/AeroTrack.git
+cd AeroTrack
 npm install
 ```
 
@@ -57,7 +57,7 @@ VITE_AIRPORTDB_TOKEN=your_airportdb_token
 
 ### Getting API Keys
 
-1. **OpenSky Network** — Register at [opensky-network.org](https://opensky-network.org/) and create an API client to get your Client ID and Secret. Without an account, data delay is ~12 seconds; with an account, it's ~6 seconds.
+1. **OpenSky Network** — Register at [opensky-network.org](https://opensky-network.org/) and create an API client to get your Client ID and Secret. Without an account, data delay is ~12 seconds;[...]
 
 2. **AirportDB** — Get a free API token at [airportdb.io](https://airportdb.io/) for enriched airport data (runways, frequencies, navaids).
 
