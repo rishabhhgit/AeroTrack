@@ -1,5 +1,11 @@
+// This server.js is kept for backward compatibility but the project now prefers the TypeScript
+// token proxy at src/opensky/opensky-token-proxy.ts. The top-level proxy is deprecated.
+// To consolidate, remove this folder and use the TS proxy (root package.json scripts use it).
+
 const http = require("http");
 const https = require("https");
+
+console.warn("[proxy/server.js] DEPRECATED: Use src/opensky/opensky-token-proxy.ts instead. This file will be removed in a future release.");
 
 function httpsGet(url, options = {}) {
   return new Promise((resolve, reject) => {

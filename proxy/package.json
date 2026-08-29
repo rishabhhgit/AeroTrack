@@ -1,12 +1,14 @@
 {
   "name": "opensky-relay",
   "version": "1.0.0",
-  "description": "OpenSky API relay proxy",
+  "description": "(DEPRECATED) OpenSky API relay proxy. Use src/opensky/opensky-token-proxy.ts in the main project instead.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "engines": {
     "node": ">=18"
-  }
+  },
+  "deprecated": "This top-level proxy is deprecated. The project includes a TypeScript token proxy at src/opensky/opensky-token-proxy.ts used in development via the root npm scripts. Remove this folder and run 'npm install' to refresh lockfile if consolidating.",
+  "keywords": ["opensky", "proxy", "deprecated"]
 }
